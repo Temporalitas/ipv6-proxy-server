@@ -13,15 +13,17 @@ Just download the script, set execute mode to it and run:
 ```bash
 #sudo su
 chmod +x ipv6proxyserver-install.sh
-./ipv6proxyserver-install.sh -s 64 -c 100 -u username -p password -t http
+./ipv6proxyserver-install.sh -s 64 -c 100 -u username -p password -t http -r 10
 ```
 
 Uncomment first line or run all commands with `sudo` if you`re not under root.
 
 **Command line arguments:**
 
-- `-s` - Fully dedicated for your server ipv6 [subnet](https://docs.netgate.com/pfsense/en/latest/network/ipv6/subnets.html), script supports 48 or 64
-- `-c` - The total number of proxies you want to have (from 1 to 10000)
-- `-t` - Proxies type - `http` or `socks5`. Default `http`, if no value provided
-- `-u` - All proxies auth login
-- `-p` - All proxies auth password
+- `-s` or `--subnet` - IPv6  [subnet](https://docs.netgate.com/pfsense/en/latest/network/ipv6/subnets.html), fully dedicated for your server. `48` or `64`, default `64`
+- `-c` or `--proxy-count` - The total number of proxies you want to have (from 1 to 10000)
+- `-t` or `--proxies-type` - Proxies type - `http` or `socks5`. Default `http`, if no value provided
+- `-u` or `--username` - All proxies auth login (required)
+- `-p` or `--password` - All proxies auth password (required)
+- `--start-port` - backconnect IPv4 start port. If you create 1500 proxies and `start-port` is `20000`, and server external IPv4 is, e.g,`180.113.14.28` you can connect to proxies using `180.113.14.28:20000`, `180.113.14.28:20001` and so on until `180.113.14.28:21500`
+- `-r` or `--rotating-interval` - rotation interval of entire proxy pool in minutes. At the end of each interval, output (external IPv6) addresses of all proxies are changed and  proxy server is restarted, which breaks existing connections for a few seconds. Default value - `0` (rotating disabled)
