@@ -98,7 +98,7 @@ fi;
 
 # Install required libraries
 apt update
-apt install make g++ wget curl -y
+apt install make g++ wget curl cron -y
 
 # Enable sysctl options for rerouting and bind ips from subnet to default interface
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1}')"
