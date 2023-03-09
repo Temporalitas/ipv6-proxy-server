@@ -8,10 +8,11 @@ Ask questions: [@just_temp](https://t.me/just_temp)
 
 Assuming you already have an entire IPv6 subnet (/48 or /64) routed to your server.
 
-Just download the script, set execute mode to it and run:
+Just run:
 
 ```bash
 #sudo su
+git clone https://github.com/Theodikes/ipv6-proxy-server.git && cd ipv6-proxy-server
 chmod +x ipv6proxyserver-install.sh
 ./ipv6proxyserver-install.sh -s 64 -c 100 -u username -p password -t http -r 10
 ```
@@ -27,8 +28,6 @@ Uncomment first line or run all commands with `sudo` if you`re not under root.
 - `-p` or `--password` - All proxies auth password (required)
 - `--start-port` - backconnect IPv4 start port. If you create 1500 proxies and `start-port` is `20000`, and server external IPv4 is, e.g,`180.113.14.28` you can connect to proxies using `180.113.14.28:20000`, `180.113.14.28:20001` and so on until `180.113.14.28:21500`
 - `-r` or `--rotating-interval` - rotation interval of entire proxy pool in minutes. At the end of each interval, output (external IPv6) addresses of all proxies are changed and proxy server is restarted, which breaks existing connections for a few seconds. From 0 to 59, default value - `0` (rotating disabled)
-
-
 
 ### License
 
