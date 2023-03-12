@@ -14,10 +14,18 @@ Just run:
 #sudo su
 git clone https://github.com/Theodikes/ipv6-proxy-server.git && cd ipv6-proxy-server
 chmod +x ipv6proxyserver-install.sh
-./ipv6proxyserver-install.sh -s 64 -c 100 -u username -p password -t http -r 10
+./ipv6-proxy-server.sh -s 64 -c 100 -u username -p password -t http -r 10
 ```
 
 Uncomment first line or run all commands with `sudo` if you`re not under root.
+
+If script already installed, you can just run one command to reconfigure parameters, for example:
+
+```bash
+./ipv6-proxy-server.sh -s 64 -c 20 -u username2 -p password2 -t socks5 -r 2
+```
+
+Old instance will be disabled and new starts without reinstallation very quickly.
 
 **Command line arguments:**
 
