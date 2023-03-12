@@ -32,6 +32,7 @@ proxies_type="http"
 start_port=30000
 rotating_interval=0
 use_localhost=false
+auth=true
 
 while true; do
   case "$1" in
@@ -57,8 +58,10 @@ if ! [[ $proxy_count =~ $re ]] ; then
 	usage;
 fi;
 
-if [ -z $user ] || [ -z $password ] ; then
-	echo "Error: user and password for proxy is required (specify '--username' and '--password' startup parameters)" 1>&2;
+if [ -z $user ] && [ -z $password]; then auth=false; fi;
+
+if ([ -z $user ] || [ -z $password ]) && [ $auth = true] ; then
+	echo "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)" 1>&2;
 	usage;
 fi;
 
@@ -95,6 +98,11 @@ else
 	echo "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system." 1>&2;
 	exit 1;
 fi;
+
+function dedent() {
+    local -n reference="$1"
+    reference="$(echo "$reference" | sed 's/^[[:space:]]*//')"
+}
 
 # Install required libraries
 apt update
@@ -196,11 +204,16 @@ timeouts 1 5 30 60 180 1800 15 60
 setgid 65535
 setuid 65535
 flush
-auth strong
-users ${user}:CL:${password}
-allow ${user}
 
 EOFSUB
+
+if [ $auth = true ]; then
+  tee -a $proxyserver_config_path > /dev/null << EOFSUB
+    auth strong
+    users ${user}:CL:${password}
+    allow ${user}
+EOFSUB
+fi;
 
 # Add all ipv6 backconnect proxy with random adresses in proxy server startup config
 port=$start_port
