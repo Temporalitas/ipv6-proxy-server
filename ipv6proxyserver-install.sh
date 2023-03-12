@@ -206,7 +206,7 @@ EOFSUB
 port=$start_port
 count=1
 for random_ipv6_address in \$(cat $random_ipv6_list_file); do
-    if [ "$proxies_type" = "http" ]; then proxy_startup_depending_on_type="proxy -6 -n -a"; else proxy_startup_depending_on_type="socks -6"; fi;
+    if [ "$proxies_type" = "http" ]; then proxy_startup_depending_on_type="proxy -6 -n -a"; else proxy_startup_depending_on_type="socks -6 -a"; fi;
     echo "\$proxy_startup_depending_on_type -p\$port -i$backconnect_ipv4 -e\$random_ipv6_address" >> $proxyserver_config_path
     ((port+=1))
     ((count+=1))
