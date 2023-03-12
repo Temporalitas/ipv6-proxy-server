@@ -125,7 +125,6 @@ startup_script_path="$proxy_dir/proxy-startup.sh"
 
 # Get external server ip for backconnect
 external_ipv4="$(curl https://ipinfo.io/ip)"
-
 # Use localhost ipv5 address as backconnect for proxy if user want local proxy
 localhost_ipv4="127.0.0.1"
 backconnect_ipv4=$([ "$use_localhost" == true ] && echo "$localhost_ipv4" || echo "$external_ipv4")
@@ -135,9 +134,9 @@ if [ -d $proxy_dir ] && [ "$(ls -A $proxy_dir)" ]; then echo "Error: directory f
 mkdir $proxy_dir && cd $proxy_dir
 
 # Install proxy server
-wget https://github.com/3proxy/3proxy/archive/refs/tags/3proxy-0.8.7.tar.gz
-tar -xf 3proxy-0.8.7.tar.gz
-mv 3proxy-3proxy-0.8.7 3proxy
+wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz
+tar -xf 0.9.4.tar.gz
+mv 3proxy-0.9.4 3proxy
 
 # Build proxy server
 cd 3proxy
@@ -220,7 +219,7 @@ done
 ulimit -n 600000
 ulimit -u 600000
 for ipv6_address in \$(cat ${random_ipv6_list_file}); do ip -6 addr add \${ipv6_address} dev ${interface_name};done;
-${user_home_dir}/proxyserver/3proxy/src/3proxy ${proxyserver_config_path}
+${user_home_dir}/proxyserver/3proxy/bin/3proxy ${proxyserver_config_path}
 exit 0
 EOF
 chmod +x $startup_script_path
