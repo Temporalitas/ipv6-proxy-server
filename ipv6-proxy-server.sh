@@ -109,15 +109,14 @@ script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1}')"
 
-# Get external server ip for backconnect
-external_ipv4="$(curl https://ipinfo.io/ip)"
-# Use localhost ipv5 address as backconnect for proxy if user want local proxy
-localhost_ipv4="127.0.0.1"
-backconnect_ipv4=$([ "$use_localhost" == true ] && echo "$localhost_ipv4" || echo "$external_ipv4")
-
 function echo_log_err(){
   echo $1 1>&2;
   echo -e "$1\n" &>> $script_log_file;
+}
+
+function echo_log_err_and_exit(){
+  echo_log_err "$1";
+  exit 1;
 }
 
 function is_proxyserver_installed(){
@@ -129,20 +128,41 @@ function is_proxyserver_running(){
   if ps aux | grep -q $proxyserver_config_path; then return 0; else return 1; fi;
 }
 
+function is_package_not_installed(){
+  if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 0; else return 1; fi;
+}
+
+function is_valid_ip(){
+  if [[ "$1" =~ ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then return 0; else return 1; fi;
+}
+
+# DONT use before curl package is installed
+function get_backconnect_ipv4(){
+  if [ $use_localhost == true ]; then echo "127.0.0.1"; return; fi;
+
+  if is_package_not_installed "curl"; then
+    local maybe_ip=$(ip addr show $interface_name | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
+    if is_valid_ip $maybe_ip; then echo $maybe_ip; return; fi;
+    
+    echo_log_err_and_exit "Error: curl not installed and cannot parse valid IP from interface info";
+  fi;
+
+  echo $(curl https://ipinfo.io/ip);
+}
+
+
 function check_ipv6(){
   # Check is ipv6 enabled or not
   if test -f /proc/net/if_inet6; then
 	  echo "IPv6 interface is enabled";
   else
-	  echo_log_err "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system.";
-	  exit 1;
+	  echo_log_err_and_exit "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system.";
   fi;
 
   if [[ $(ip -6 addr show scope global) ]]; then
     echo "IPv6 global address is allocated on server successfully";
   else
-    echo_log_err "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support.";
-    exit 1;
+    echo_log_err_and_exit "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support.";
   fi;
 
   local ifaces_config="/etc/network/interfaces";
@@ -150,22 +170,16 @@ function check_ipv6(){
     if grep 'inet6' $ifaces_config > /dev/null; then
       echo "Network interfaces for IPv6 configured correctly";
     else
-      echo_log_err "Error: $ifaces_config has no inet6 (IPv6) configuration.";
-      exit 1;
+      echo_log_err_and_exit "Error: $ifaces_config has no inet6 (IPv6) configuration.";
     fi;
   fi;
 
-  if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]]; then 
+  if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]] &> /dev/null; then 
     echo "Test ping google.com successfully";
   else
-    echo_log_err "Error: test ping google.com through IPv6 failed, network is unreachable.";
-    exit 1;
+    echo_log_err_and_exit "Error: test ping google.com through IPv6 failed, network is unreachable.";
   fi; 
 
-}
-
-function is_package_not_installed(){
-  if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 0; else return 1; fi;
 }
 
 # Install required libraries
@@ -178,8 +192,7 @@ function install_requred_packages(){
     if is_package_not_installed $package; then
       apt install $package -y &>> $script_log_file
       if is_package_not_installed $package; then
-        echo_log_err "Error: cannot install \"$package\" package";
-        exit 1;
+        echo_log_err_and_exit "Error: cannot install \"$package\" package";
       fi;
     fi;
   done;
@@ -191,20 +204,22 @@ function install_3proxy(){
 
   mkdir $proxy_dir && cd $proxy_dir
 
+  echo -e "\nDownloading proxy server source...";
   ( # Install proxy server
-  wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz
+  wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz &> /dev/null
   tar -xf 0.9.4.tar.gz
   rm 0.9.4.tar.gz
   mv 3proxy-0.9.4 3proxy) &>> $script_log_file
+  echo "Proxy server source code downloaded successfully";
 
+  echo -e "\nStart building proxy server execution file from source...";
   # Build proxy server
   cd 3proxy
   make -f Makefile.Linux &>> $script_log_file;
   if test -f "$proxy_dir/3proxy/bin/3proxy"; then
     echo "Proxy server builded successfully"
   else
-    echo_log_err "Error: proxy server build from source code failed."
-    exit 1;
+    echo_log_err_and_exit "Error: proxy server build from source code failed."
   fi;
   cd ..
 }
@@ -223,9 +238,8 @@ EOF
   if [[ $(cat /proc/sys/net/ipv6/conf/$interface_name/proxy_ndp) == 1 ]] && [[ $(cat /proc/sys/net/ipv6/ip_nonlocal_bind) == 1 ]]; then 
     echo "IPv6 network sysctl data configured successfully";
   else
-    echo_log_err "Error: cannot configure IPv6 config";
     cat /etc/sysctl.conf &>> $script_log_file;
-    exit 1;
+    echo_log_err_and_exit "Error: cannot configure IPv6 config";
   fi;
 }
 
@@ -244,6 +258,7 @@ function add_to_cron(){
 }
 
 function create_startup_script(){
+  local backconnect_ipv4=$(get_backconnect_ipv4);
   if test -f $startup_script_path; then rm $startup_script_path; fi;
   # Add main script that runs proxy server and rotates external ip's, if server is already running
   cat > $startup_script_path <<-EOF
@@ -340,14 +355,14 @@ EOF
 }
 
 function run_proxy_server(){
-  if [ ! -f $startup_script_path ]; then echo_log_err "Error: proxy startup script doesn't exist."; fi;
+  if [ ! -f $startup_script_path ]; then echo_log_err_and_exit "Error: proxy startup script doesn't exist."; fi;
 
   chmod +x $startup_script_path;
   /bin/bash $startup_script_path;
   if is_proxyserver_running; then 
     echo -e "\nIPv6 proxy server started successfully";
   else
-    echo_log_err "Error: cannot run proxy server";
+    echo_log_err_and_exit "Error: cannot run proxy server";
   fi;
 }
 
@@ -355,7 +370,7 @@ function run_proxy_server(){
 if test -f $script_log_file; then rm $script_log_file; fi; touch $script_log_file;
 
 if is_proxyserver_installed; then
-  echo 'Proxy server already installed, reconfiguring:\n';
+  echo -e "Proxy server already installed, reconfiguring:\n";
   check_ipv6;
   create_startup_script;
   add_to_cron;
