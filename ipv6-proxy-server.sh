@@ -182,7 +182,7 @@ function configure_ipv6(){
   net.ipv6.conf.$interface_name.proxy_ndp=1
   net.ipv6.conf.all.proxy_ndp=1
   net.ipv6.conf.default.forwarding=1
-  et.ipv6.conf.all.forwarding=1
+  net.ipv6.conf.all.forwarding=1
   net.ipv6.ip_nonlocal_bind = 1
 EOF
   sysctl -p
