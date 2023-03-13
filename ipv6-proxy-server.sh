@@ -6,7 +6,7 @@ if [ "$EUID" -ne 0 ];
 fi;
 
 # Program help info for users
-usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (default 64)] 
+function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (default 64)] 
                           [-c | --proxy-count <number> count of proxies] 
                           [-u | --username <string> proxy auth username] 
                           [-p | --password <string> proxy password] 
@@ -60,7 +60,7 @@ fi;
 
 if [ -z $user ] && [ -z $password]; then auth=false; fi;
 
-if ([ -z $user ] || [ -z $password ]) && [ $auth = true] ; then
+if ([ -z $user ] || [ -z $password ]) && [ $auth = true ] ; then
 	echo "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)" 1>&2;
 	usage;
 fi;
@@ -104,6 +104,8 @@ random_ipv6_list_file="$proxy_dir/ipv6.list"
 startup_script_path="$proxy_dir/proxy-startup.sh"
 # Cron config path (start proxy server after linux reboot and IPs rotations)
 cron_script_path="$proxy_dir/proxy-server.cron"
+# Log file for script execution
+script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1}')"
 
@@ -113,65 +115,97 @@ external_ipv4="$(curl https://ipinfo.io/ip)"
 localhost_ipv4="127.0.0.1"
 backconnect_ipv4=$([ "$use_localhost" == true ] && echo "$localhost_ipv4" || echo "$external_ipv4")
 
+function echo_log_err(){
+  echo $1 1>&2;
+  echo -e "$1\n" &>> $script_log_file;
+}
+
 function is_proxyserver_installed(){
   if [ -d $proxy_dir ] && [ "$(ls -A $proxy_dir)" ]; then return 0; fi;
   return 1;
 }
 
+function is_proxyserver_running(){
+  if ps aux | grep -q $proxyserver_config_path; then return 0; else return 1; fi;
+}
+
 function check_ipv6(){
   # Check is ipv6 enabled or not
   if test -f /proc/net/if_inet6; then
-	  echo "IP v6 interface is enabled";
+	  echo "IPv6 interface is enabled";
   else
-	  echo "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system." 1>&2;
+	  echo_log_err "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system.";
 	  exit 1;
   fi;
 
   if [[ $(ip -6 addr show scope global) ]]; then
-    echo "IPv6 global address is allocated on server";
+    echo "IPv6 global address is allocated on server successfully";
   else
-    echo "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support." 1>&2;
+    echo_log_err "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support.";
     exit 1;
   fi;
 
   local ifaces_config="/etc/network/interfaces";
   if test -f $ifaces_config; then
-    if grep 'inet6' $ifaces_config; then
+    if grep 'inet6' $ifaces_config > /dev/null; then
       echo "Network interfaces for IPv6 configured correctly";
     else
-      echo "Error: $ifaces_config has no inet6 (IPv6) configuration." 1>&2;
+      echo_log_err "Error: $ifaces_config has no inet6 (IPv6) configuration.";
       exit 1;
     fi;
   fi;
 
   if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]]; then 
-    echo "Test ping google.com successfull";
+    echo "Test ping google.com successfully";
   else
-    echo "Error: test ping google.com through IPv6 failed, network is unreachable." 1>&2;
+    echo_log_err "Error: test ping google.com through IPv6 failed, network is unreachable.";
     exit 1;
   fi; 
 
 }
 
+function is_package_not_installed(){
+  if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 0; else return 1; fi;
+}
+
 # Install required libraries
-function install_requred_libs(){
-  apt update
-  apt install make g++ wget curl cron -y
+function install_requred_packages(){
+  apt update &>> $script_log_file
+
+  requred_packages=("make" "g++" "wget" "curl" "cron")
+  local package
+  for package in ${requred_packages[@]}; do
+    if is_package_not_installed $package; then
+      apt install $package -y &>> $script_log_file
+      if is_package_not_installed $package; then
+        echo_log_err "Error: cannot install \"$package\" package";
+        exit 1;
+      fi;
+    fi;
+  done;
+
+  echo "All required packages installed successfully";
 }
 
 function install_3proxy(){
 
   mkdir $proxy_dir && cd $proxy_dir
 
-  # Install proxy server
+  ( # Install proxy server
   wget https://github.com/3proxy/3proxy/archive/refs/tags/0.9.4.tar.gz
   tar -xf 0.9.4.tar.gz
   rm 0.9.4.tar.gz
-  mv 3proxy-0.9.4 3proxy
+  mv 3proxy-0.9.4 3proxy) &>> $script_log_file
 
   # Build proxy server
   cd 3proxy
-  make -f Makefile.Linux
+  make -f Makefile.Linux &>> $script_log_file;
+  if test -f "$proxy_dir/3proxy/bin/3proxy"; then
+    echo "Proxy server builded successfully"
+  else
+    echo_log_err "Error: proxy server build from source code failed."
+    exit 1;
+  fi;
   cd ..
 }
 
@@ -183,9 +217,16 @@ function configure_ipv6(){
   net.ipv6.conf.all.proxy_ndp=1
   net.ipv6.conf.default.forwarding=1
   net.ipv6.conf.all.forwarding=1
-  net.ipv6.ip_nonlocal_bind = 1
+  net.ipv6.ip_nonlocal_bind=1
 EOF
-  sysctl -p
+  sysctl -p &>> $script_log_file;
+  if [[ $(cat /proc/sys/net/ipv6/conf/$interface_name/proxy_ndp) == 1 ]] && [[ $(cat /proc/sys/net/ipv6/ip_nonlocal_bind) == 1 ]]; then 
+    echo "IPv6 network sysctl data configured successfully";
+  else
+    echo_log_err "Error: cannot configure IPv6 config";
+    cat /etc/sysctl.conf &>> $script_log_file;
+    exit 1;
+  fi;
 }
 
 function add_to_cron(){
@@ -194,6 +235,12 @@ function add_to_cron(){
   echo "@reboot $startup_script_path" > $cron_script_path;
   if [ $rotating_interval -ne 0 ]; then echo "*/$rotating_interval * * * * $startup_script_path" >> "$cron_script_path"; fi;
   crontab $cron_script_path
+
+  if crontab -l | grep -q $startup_script_path; then 
+    echo "Proxy startup script added to cron autorun successfully";
+  else
+    echo_log_err "Warning: adding script to cron autorun failed.";
+  fi;
 }
 
 function create_startup_script(){
@@ -289,23 +336,38 @@ function create_startup_script(){
   ${user_home_dir}/proxyserver/3proxy/bin/3proxy ${proxyserver_config_path}
   exit 0
 EOF
-  chmod +x $startup_script_path
+  
 }
+
+function run_proxy_server(){
+  if [ ! -f $startup_script_path ]; then echo_log_err "Error: proxy startup script doesn't exist."; fi;
+
+  chmod +x $startup_script_path;
+  /bin/bash $startup_script_path;
+  if is_proxyserver_running; then 
+    echo -e "\nIPv6 proxy server started successfully";
+  else
+    echo_log_err "Error: cannot run proxy server";
+  fi;
+}
+
+
+if test -f $script_log_file; then rm $script_log_file; fi; touch $script_log_file;
 
 if is_proxyserver_installed; then
   echo 'Proxy server already installed, reconfiguring:\n';
   check_ipv6;
   create_startup_script;
   add_to_cron;
-  /bin/bash $startup_script_path;
+  run_proxy_server;
 else
   check_ipv6;
-  install_requred_libs;
+  install_requred_packages;
   configure_ipv6;
   install_3proxy;
   create_startup_script;
   add_to_cron;
-  /bin/bash $startup_script_path
+  run_proxy_server;
 fi;
 
 exit 0
