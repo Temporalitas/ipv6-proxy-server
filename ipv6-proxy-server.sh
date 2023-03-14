@@ -128,8 +128,8 @@ function is_proxyserver_running(){
   if ps aux | grep -q $proxyserver_config_path; then return 0; else return 1; fi;
 }
 
-function is_package_not_installed(){
-  if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 0; else return 1; fi;
+function is_package_installed(){
+  if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 1; else return 0; fi;
 }
 
 function is_valid_ip(){
@@ -140,14 +140,15 @@ function is_valid_ip(){
 function get_backconnect_ipv4(){
   if [ $use_localhost == true ]; then echo "127.0.0.1"; return; fi;
 
-  if is_package_not_installed "curl"; then
-    local maybe_ip=$(ip addr show $interface_name | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
-    if is_valid_ip $maybe_ip; then echo $maybe_ip; return; fi;
-    
-    echo_log_err_and_exit "Error: curl not installed and cannot parse valid IP from interface info";
+  local maybe_ipv4=$(ip addr show $interface_name | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
+  if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
+
+  if is_package_installed "curl"; then
+    (maybe_ipv4=$(curl https://ipinfo.io/ip)) &> /dev/null
+    if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
   fi;
 
-  echo $(curl https://ipinfo.io/ip);
+  echo_log_err_and_exit "Error: curl package not installed and cannot parse valid IP from interface info";
 }
 
 
@@ -175,7 +176,7 @@ function check_ipv6(){
   fi;
 
   if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]] &> /dev/null; then 
-    echo "Test ping google.com successfully";
+    echo "Test ping google.com using IPv6 successfully";
   else
     echo_log_err_and_exit "Error: test ping google.com through IPv6 failed, network is unreachable.";
   fi; 
@@ -189,15 +190,15 @@ function install_requred_packages(){
   requred_packages=("make" "g++" "wget" "curl" "cron")
   local package
   for package in ${requred_packages[@]}; do
-    if is_package_not_installed $package; then
+    if ! is_package_installed $package; then
       apt install $package -y &>> $script_log_file
-      if is_package_not_installed $package; then
+      if ! is_package_installed $package; then
         echo_log_err_and_exit "Error: cannot install \"$package\" package";
       fi;
     fi;
   done;
 
-  echo "All required packages installed successfully";
+  echo -e "\nAll required packages installed successfully";
 }
 
 function install_3proxy(){
@@ -360,7 +361,10 @@ function run_proxy_server(){
   chmod +x $startup_script_path;
   /bin/bash $startup_script_path;
   if is_proxyserver_running; then 
-    echo -e "\nIPv6 proxy server started successfully";
+    local backconnect_ipv4=$(get_backconnect_ipv4)
+    local last_port=$(($start_port + $proxy_count));
+    local credentials=$([[ $auth == true ]] && echo -n ":$user:$password" || echo -n "");
+    echo -e "\nIPv6 proxy server started successfully. Backconnect IPv4 is available from $backconnect_ipv4:$start_port$credentials to $backconnect_ipv4:$last_port$credentials via $proxies_type protocol";
   else
     echo_log_err_and_exit "Error: cannot run proxy server";
   fi;
@@ -377,8 +381,8 @@ if is_proxyserver_installed; then
   run_proxy_server;
 else
   check_ipv6;
-  install_requred_packages;
   configure_ipv6;
+  install_requred_packages;
   install_3proxy;
   create_startup_script;
   add_to_cron;
