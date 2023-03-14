@@ -107,7 +107,7 @@ cron_script_path="$proxy_dir/proxy-server.cron"
 # Log file for script execution
 script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Global network inteface name
-interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1}')"
+interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1}')"
 
 function echo_log_err(){
   echo $1 1>&2;
