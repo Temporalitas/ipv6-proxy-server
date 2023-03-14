@@ -13,7 +13,7 @@ Just run:
 ```bash
 #sudo su
 git clone https://github.com/Theodikes/ipv6-proxy-server.git && cd ipv6-proxy-server
-chmod +x ipv6proxyserver-install.sh
+chmod +x ipv6-proxy-server.sh
 ./ipv6-proxy-server.sh -s 64 -c 100 -u username -p password -t http -r 10
 ```
 
