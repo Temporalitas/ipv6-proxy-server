@@ -12,13 +12,15 @@ function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (defau
                           [-p | --password <string> proxy password] 
                           [-t | --proxies-type <http|socks5> result proxies type (default http)]
                           [-r | --rotating-interval <0-59> proxies extarnal address rotating time in minutes (default 0, disabled)]
+                          [--start-port <5000-65536> start port for backconnect ipv4 (default 30000)]
+                          [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
                           [-m | --ipv6-mask <string> constant ipv6 address mask, to which the rotated part is added (or gateaway)
                                 use only if the gateway is different from the subnet address]
-                          [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
-                          [--start-port <5000-65536> start port for backconnect ipv4 (default 30000)]
+                          [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
+                                use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o lhs:c:u:p:t:r:m: --long help,localhost,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,start-port: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m: --long help,localhost,disable-inet6-ifaces-check,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,start-port: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -33,6 +35,7 @@ start_port=30000
 rotating_interval=0
 use_localhost=false
 auth=true
+inet6_network_interfaces_configuration_check=true
 
 while true; do
   case "$1" in
@@ -45,6 +48,7 @@ while true; do
     -r | --rotating-interval ) rotating_interval="$2"; shift 2;;
     -m | --ipv6-mask ) subnet_mask="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
+    -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
     --start-port ) start_port="$2"; shift 2;;
     -- ) shift; break ;;
     * ) break ;;
@@ -167,7 +171,9 @@ function check_ipv6(){
   fi;
 
   local ifaces_config="/etc/network/interfaces";
-  if test -f $ifaces_config; then
+  if [ $inet6_network_interfaces_configuration_check = true ]; then
+    if [ ! -f $ifaces_config ]; then echo_log_err_and_exit "Interfaces config (/etc/network/interfaces) doesn't exist"; fi;
+    
     if grep 'inet6' $ifaces_config > /dev/null; then
       echo "Network interfaces for IPv6 configured correctly";
     else
