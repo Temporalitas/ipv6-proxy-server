@@ -355,6 +355,24 @@ EOF
   
 }
 
+function open_ufw_backconnect_ports(){
+  if ufw status | grep -qw active; then
+    local last_port=$(($start_port + $proxy_count));
+    ufw allow $start_port:$last_port/tcp >> $script_log_file;
+    ufw allow $start_port:$last_port/udp >> $script_log_file;
+
+    if ufw status | grep -qw $start_port:$last_port; then
+      echo "UFW ports for backconnect proxies opened successfully";
+    else
+      echo_log_err $(ufw status);
+      echo_log_err_and_exit "Cannot open ports for backconnect proxies, configure ufw please";
+    fi;
+
+  else
+    echo "UFW protection disabled, ports for backconnect proxy opened successfully";
+  fi;
+}
+
 function run_proxy_server(){
   if [ ! -f $startup_script_path ]; then echo_log_err_and_exit "Error: proxy startup script doesn't exist."; fi;
 
@@ -378,6 +396,7 @@ if is_proxyserver_installed; then
   check_ipv6;
   create_startup_script;
   add_to_cron;
+  open_ufw_backconnect_ports;
   run_proxy_server;
 else
   check_ipv6;
@@ -386,6 +405,7 @@ else
   install_3proxy;
   create_startup_script;
   add_to_cron;
+  open_ufw_backconnect_ports;
   run_proxy_server;
 fi;
 
