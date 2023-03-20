@@ -362,6 +362,11 @@ EOF
 }
 
 function open_ufw_backconnect_ports(){
+  # No need open ports if backconnect proxies on localhost
+  if [ $use_localhost = true ]; then return; fi;
+
+  if ! is_package_installed "ufw"; then echo "Firewall not installed, ports for backconnect proxy opened successfully"; return; fi;
+
   if ufw status | grep -qw active; then
     local last_port=$(($start_port + $proxy_count));
     ufw allow $start_port:$last_port/tcp >> $script_log_file;
