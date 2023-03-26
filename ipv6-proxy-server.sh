@@ -96,6 +96,8 @@ if [ -z $subnet_mask ]; then
 fi;
 
 # Define all needed paths to scripts / configs / etc
+bash_location="$(which bash)"
+# Get user home dir absolute path
 cd ~
 user_home_dir="$(pwd)"
 # Path to dir with all proxies info
@@ -253,8 +255,8 @@ EOF
 function add_to_cron(){
   if test -f $cron_script_path; then rm $cron_script_path; fi;
   # Add startup script to cron (job sheduler) to restart proxy server after reboot and rotate proxy pool
-  echo "@reboot /bin/bash $startup_script_path" > $cron_script_path;
-  if [ $rotating_interval -ne 0 ]; then echo "*/$rotating_interval * * * * /bin/bash $startup_script_path" >> "$cron_script_path"; fi;
+  echo "@reboot $bash_location $startup_script_path" > $cron_script_path;
+  if [ $rotating_interval -ne 0 ]; then echo "*/$rotating_interval * * * * $bash_location $startup_script_path" >> "$cron_script_path"; fi;
   crontab $cron_script_path;
   systemctl restart cron;
 
@@ -270,7 +272,7 @@ function create_startup_script(){
   if test -f $startup_script_path; then rm $startup_script_path; fi;
   # Add main script that runs proxy server and rotates external ip's, if server is already running
   cat > $startup_script_path <<-EOF
-  #!/bin/bash
+  #!$bash_location
 
   # Remove leading whitespaces in every string in text
   function dedent() {
@@ -389,7 +391,7 @@ function run_proxy_server(){
   if [ ! -f $startup_script_path ]; then echo_log_err_and_exit "Error: proxy startup script doesn't exist."; fi;
 
   chmod +x $startup_script_path;
-  /bin/bash $startup_script_path;
+  $bash_location $startup_script_path;
   if is_proxyserver_running; then 
     local backconnect_ipv4=$(get_backconnect_ipv4)
     local last_port=$(($start_port + $proxy_count));
