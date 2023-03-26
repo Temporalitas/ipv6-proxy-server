@@ -253,9 +253,10 @@ EOF
 function add_to_cron(){
   if test -f $cron_script_path; then rm $cron_script_path; fi;
   # Add startup script to cron (job sheduler) to restart proxy server after reboot and rotate proxy pool
-  echo "@reboot $startup_script_path" > $cron_script_path;
-  if [ $rotating_interval -ne 0 ]; then echo "*/$rotating_interval * * * * $startup_script_path" >> "$cron_script_path"; fi;
-  crontab $cron_script_path
+  echo "@reboot /bin/bash $startup_script_path" > $cron_script_path;
+  if [ $rotating_interval -ne 0 ]; then echo "*/$rotating_interval * * * * /bin/bash $startup_script_path" >> "$cron_script_path"; fi;
+  crontab $cron_script_path;
+  systemctl restart cron;
 
   if crontab -l | grep -q $startup_script_path; then 
     echo "Proxy startup script added to cron autorun successfully";
