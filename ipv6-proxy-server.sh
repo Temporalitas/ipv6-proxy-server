@@ -349,9 +349,6 @@ function create_startup_script(){
       echo "\$proxy_startup_depending_on_type -p\$port -i$backconnect_ipv4 -e\$random_ipv6_address" >> $proxyserver_config_path
       ((port+=1))
       ((count+=1))
-      if [ \$count -eq 10001 ]; then
-        exit 1
-      fi
   done
 
   # Script that adds all random ipv6 to default interface and runs backconnect proxy server
