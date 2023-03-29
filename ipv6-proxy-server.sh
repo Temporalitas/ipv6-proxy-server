@@ -354,9 +354,12 @@ function create_startup_script(){
       ((count+=1))
   done
 
-  # Script that adds all random ipv6 to default interface and runs backconnect proxy server
+  # Increase user limits (open files, processes and pending signals count)
   ulimit -n 600000
   ulimit -u 600000
+  ulimit -i 40000
+
+  # Script that adds all random ipv6 to default interface and runs backconnect proxy server
   for ipv6_address in \$(cat ${random_ipv6_list_file}); do ip -6 addr add \${ipv6_address} dev ${interface_name};done;
   ${user_home_dir}/proxyserver/3proxy/bin/3proxy ${proxyserver_config_path}
   exit 0
