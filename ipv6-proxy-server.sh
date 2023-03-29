@@ -242,6 +242,9 @@ function configure_ipv6(){
   net.ipv6.conf.default.forwarding=1
   net.ipv6.conf.all.forwarding=1
   net.ipv6.ip_nonlocal_bind=1
+  vm.max_map_count=195120
+  kernel.pid_max=195120
+  net.ipv4.ip_local_port_range=1024 65000
 EOF
   sysctl -p &>> $script_log_file;
   if [[ $(cat /proc/sys/net/ipv6/conf/$interface_name/proxy_ndp) == 1 ]] && [[ $(cat /proc/sys/net/ipv6/ip_nonlocal_bind) == 1 ]]; then 
