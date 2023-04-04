@@ -184,7 +184,7 @@ function check_ipv6(){
 
   local ifaces_config="/etc/network/interfaces";
   if [ $inet6_network_interfaces_configuration_check = true ]; then
-    if [ ! -f $ifaces_config ]; then echo_log_err_and_exit "Interfaces config (/etc/network/interfaces) doesn't exist"; fi;
+    if [ ! -f $ifaces_config ]; then echo_log_err_and_exit "Error: interfaces config ($ifaces_config) doesn't exist"; fi;
     
     if grep 'inet6' $ifaces_config > /dev/null; then
       echo "Network interfaces for IPv6 configured correctly";
