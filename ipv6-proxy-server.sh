@@ -121,7 +121,7 @@ script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE|docker" { print $1}')"
 # Last opened port for backconnect proxy
-last_port=$(($start_port + $proxy_count));
+last_port=$(($start_port + $proxy_count - 1));
 # Proxy credentials - username and password, delimited by ':', if exist, or empty string, if auth == false
 credentials=$([[ $auth == true ]] && echo -n ":$user:$password" || echo -n "");
 
