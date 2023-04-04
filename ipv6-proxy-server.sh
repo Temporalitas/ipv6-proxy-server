@@ -411,6 +411,12 @@ function write_backconnect_proxies_to_file(){
 
   if [ -f $backconnect_proxies_file ]; then rm $backconnect_proxies_file; fi;
 
+  if ! touch $backconnect_proxies_file &> $script_log_file; then 
+    echo "Backconnect proxies list file path: $backconnect_proxies_file" >> $script_log_file;
+    echo_log_err "Warning: provided invalid path to backconnect proxies list file";
+    return;
+  fi;
+
   for port in $(eval echo "{$start_port..$last_port}"); do
     echo "$backconnect_ipv4:$port$credentials" >> $backconnect_proxies_file;
   done;
