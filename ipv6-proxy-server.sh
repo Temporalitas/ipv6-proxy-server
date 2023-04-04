@@ -16,11 +16,13 @@ function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (defau
                           [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
                           [-m | --ipv6-mask <string> constant ipv6 address mask, to which the rotated part is added (or gateaway)
                                 use only if the gateway is different from the subnet address]
+                          [-f | --backconnect-proxies-file <string> path to file, in which backconnect proxies list will be written
+                                when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]
                           [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
                                 use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m: --long help,localhost,disable-inet6-ifaces-check,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,start-port: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f: --long help,localhost,disable-inet6-ifaces-check,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,start-port:,backconnect-proxies-file: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -36,6 +38,7 @@ rotating_interval=0
 use_localhost=false
 auth=true
 inet6_network_interfaces_configuration_check=true
+backconnect_proxies_file="default"
 
 while true; do
   case "$1" in
@@ -47,6 +50,7 @@ while true; do
     -t | --proxies-type ) proxies_type="$2"; shift 2 ;;
     -r | --rotating-interval ) rotating_interval="$2"; shift 2;;
     -m | --ipv6-mask ) subnet_mask="$2"; shift 2;;
+    -f | --backconnect_proxies_file ) backconnect_proxies_file="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
     -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
     --start-port ) start_port="$2"; shift 2;;
@@ -106,6 +110,8 @@ proxy_dir="$user_home_dir/proxyserver"
 proxyserver_config_path="$proxy_dir/3proxy/3proxy.cfg"
 # Path to file with all result (external) ipv6 addresses
 random_ipv6_list_file="$proxy_dir/ipv6.list"
+# Define correct path to file with backconnect proxies list, if it isn't defined by user
+if [[ $backconnect_proxies_file == "default" ]]; then backconnect_proxies_file="$proxy_dir/backconnect_proxies.list"; fi;
 # Script on server startup (generate random ids and run proxy daemon)
 startup_script_path="$proxy_dir/proxy-startup.sh"
 # Cron config path (start proxy server after linux reboot and IPs rotations)
@@ -114,6 +120,10 @@ cron_script_path="$proxy_dir/proxy-server.cron"
 script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE|docker" { print $1}')"
+# Last opened port for backconnect proxy
+last_port=$(($start_port + $proxy_count));
+# Proxy credentials - username and password, delimited by ':', if exist, or empty string, if auth == false
+credentials=$([[ $auth == true ]] && echo -n ":$user:$password" || echo -n "");
 
 function echo_log_err(){
   echo $1 1>&2;
@@ -368,7 +378,6 @@ function open_ufw_backconnect_ports(){
   if ! is_package_installed "ufw"; then echo "Firewall not installed, ports for backconnect proxy opened successfully"; return; fi;
 
   if ufw status | grep -qw active; then
-    local last_port=$(($start_port + $proxy_count));
     ufw allow $start_port:$last_port/tcp >> $script_log_file;
     ufw allow $start_port:$last_port/udp >> $script_log_file;
 
@@ -391,12 +400,20 @@ function run_proxy_server(){
   $bash_location $startup_script_path;
   if is_proxyserver_running; then 
     local backconnect_ipv4=$(get_backconnect_ipv4)
-    local last_port=$(($start_port + $proxy_count));
-    local credentials=$([[ $auth == true ]] && echo -n ":$user:$password" || echo -n "");
     echo -e "\nIPv6 proxy server started successfully. Backconnect IPv4 is available from $backconnect_ipv4:$start_port$credentials to $backconnect_ipv4:$last_port$credentials via $proxies_type protocol";
   else
     echo_log_err_and_exit "Error: cannot run proxy server";
   fi;
+}
+
+function write_backconnect_proxies_to_file(){
+  local backconnect_ipv4=$(get_backconnect_ipv4)
+
+  if [ -f $backconnect_proxies_file ]; then rm $backconnect_proxies_file; fi;
+
+  for port in $(eval echo "{$start_port..$last_port}"); do
+    echo "$backconnect_ipv4:$port$credentials" >> $backconnect_proxies_file;
+  done;
 }
 
 
@@ -409,6 +426,7 @@ if is_proxyserver_installed; then
   add_to_cron;
   open_ufw_backconnect_ports;
   run_proxy_server;
+  write_backconnect_proxies_to_file;
 else
   check_ipv6;
   configure_ipv6;
@@ -418,6 +436,7 @@ else
   add_to_cron;
   open_ufw_backconnect_ports;
   run_proxy_server;
+  write_backconnect_proxies_to_file;
 fi;
 
 exit 0
