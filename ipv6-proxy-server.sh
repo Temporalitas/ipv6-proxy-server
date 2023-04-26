@@ -16,6 +16,8 @@ function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (defau
                           [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
                           [-m | --ipv6-mask <string> constant ipv6 address mask, to which the rotated part is added (or gateaway)
                                 use only if the gateway is different from the subnet address]
+                          [-i | --interface <string> full name of ethernet interface, on which IPv6 subnet was allocated
+                                automatically parsed by default, use ONLY if you have non-standard/additional interfaces on your server]
                           [-f | --backconnect-proxies-file <string> path to file, in which backconnect proxies list will be written
                                 when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]
                           [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
@@ -39,6 +41,8 @@ use_localhost=false
 auth=true
 inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
+# Global network inteface name
+interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }')"
 
 while true; do
   case "$1" in
@@ -51,6 +55,7 @@ while true; do
     -r | --rotating-interval ) rotating_interval="$2"; shift 2;;
     -m | --ipv6-mask ) subnet_mask="$2"; shift 2;;
     -f | --backconnect_proxies_file ) backconnect_proxies_file="$2"; shift 2;;
+    -i | --interface ) interface_name="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
     -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
     --start-port ) start_port="$2"; shift 2;;
@@ -118,8 +123,6 @@ startup_script_path="$proxy_dir/proxy-startup.sh"
 cron_script_path="$proxy_dir/proxy-server.cron"
 # Log file for script execution
 script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
-# Global network inteface name
-interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE|docker" { print $1}')"
 # Last opened port for backconnect proxy
 last_port=$(($start_port + $proxy_count - 1));
 # Proxy credentials - username and password, delimited by ':', if exist, or empty string, if auth == false
