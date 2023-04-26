@@ -42,7 +42,7 @@ auth=true
 inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
 # Global network inteface name
-interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }')"
+interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'NR==1')"
 
 while true; do
   case "$1" in
