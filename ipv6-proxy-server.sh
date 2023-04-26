@@ -24,7 +24,7 @@ function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (defau
                                 use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f: --long help,localhost,disable-inet6-ifaces-check,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,start-port:,backconnect-proxies-file: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f:i: --long help,localhost,disable-inet6-ifaces-check,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
