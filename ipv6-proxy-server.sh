@@ -104,6 +104,11 @@ if [ -z $subnet_mask ]; then
   subnet_mask="$(ip -6 addr|awk '{print $2}'|grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$blocks_count'}[0-9a-fA-F]{1,4}'|cut -d '/' -f1)";
 fi;
 
+if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
+  echo_log_err "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
+  usage;
+fi;
+
 # Define all needed paths to scripts / configs / etc
 bash_location="$(which bash)"
 # Get user home dir absolute path
