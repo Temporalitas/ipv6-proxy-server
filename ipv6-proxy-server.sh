@@ -82,40 +82,40 @@ function echo_log_err_and_exit(){
 # Check validity of user provided arguments
 re='^[0-9]+$'
 if ! [[ $proxy_count =~ $re ]] ; then
-	echo "Error: Argument -c (proxy count) must be a positive integer number" 1>&2;
+	echo_log_err "Error: Argument -c (proxy count) must be a positive integer number";
 	usage;
 fi;
 
 if [ -z $user ] && [ -z $password] && [ $use_random_auth = false ]; then auth=false; fi;
 
 if ([ -z $user ] || [ -z $password ]) && [ $auth = true ] && [ $use_random_auth = false ]; then
-	echo "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)" 1>&2;
+	echo_log_err "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)";
 	usage;
 fi;
 
-if ([ -n $user ] || [ -n $password ]) && [ $use_random_auth = true ]; then
+if ([[ -n $user ]] || [[ -n $password ]]) && [ $use_random_auth = true ]; then
   echo_log_err "Error: don't provide user or password as arguments, if '--random' flag is set.";
   usage;
 fi;
 
 if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
-  echo "Error: invalid value of '-t' (proxy type) parameter" 1>&2;
+  echo_log_err "Error: invalid value of '-t' (proxy type) parameter";
   usage;
 fi;
 
 if [ $subnet != 64 ] && [ $subnet != 48 ] && [ $subnet != 32 ]; then
-  echo "Error: invalid value of '-s' (subnet) parameter" 1>&2;
+  echo_log_err "Error: invalid value of '-s' (subnet) parameter";
   usage;
 fi;
 
 if [ $rotating_interval -lt 0 ] || [ $rotating_interval -gt 59 ]; then
-  echo "Error: invalid value of '-r' (proxy external ip rotating interval) parameter" 1>&2;
+  echo_log_err "Error: invalid value of '-r' (proxy external ip rotating interval) parameter";
   usage;
 fi;
 
 if [ $start_port -lt 5000 ] || (($start_port - $proxy_count > 65536 )); then
-  echo "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
-because Linux has only 65536 potentially ports" 1>&2;
+  echo_log_err "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
+because Linux has only 65536 potentially ports";
   usage;
 fi;
 
