@@ -45,6 +45,8 @@ inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'NR==1')"
+# Log file for script execution
+script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 
 while true; do
   case "$1" in
@@ -67,6 +69,16 @@ while true; do
   esac
 done
 
+function echo_log_err(){
+  echo $1 1>&2;
+  echo -e "$1\n" &>> $script_log_file;
+}
+
+function echo_log_err_and_exit(){
+  echo_log_err "$1";
+  exit 1;
+}
+
 # Check validity of user provided arguments
 re='^[0-9]+$'
 if ! [[ $proxy_count =~ $re ]] ; then
@@ -79,6 +91,11 @@ if [ -z $user ] && [ -z $password] && [ $use_random_auth = false ]; then auth=fa
 if ([ -z $user ] || [ -z $password ]) && [ $auth = true ] && [ $use_random_auth = false ]; then
 	echo "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)" 1>&2;
 	usage;
+fi;
+
+if ([ -n $user ] || [ -n $password ]) && [ $use_random_auth = true ]; then
+  echo_log_err "Error: don't provide user or password as arguments, if '--random' flag is set.";
+  usage;
 fi;
 
 if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
@@ -131,22 +148,10 @@ if [[ $backconnect_proxies_file == "default" ]]; then backconnect_proxies_file="
 startup_script_path="$proxy_dir/proxy-startup.sh"
 # Cron config path (start proxy server after linux reboot and IPs rotations)
 cron_script_path="$proxy_dir/proxy-server.cron"
-# Log file for script execution
-script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 # Last opened port for backconnect proxy
 last_port=$(($start_port + $proxy_count - 1));
 # Proxy credentials - username and password, delimited by ':', if exist, or empty string, if auth == false
 credentials=$([[ $auth == true ]] && [[ $use_random_auth == false ]] && echo -n ":$user:$password" || echo -n "");
-
-function echo_log_err(){
-  echo $1 1>&2;
-  echo -e "$1\n" &>> $script_log_file;
-}
-
-function echo_log_err_and_exit(){
-  echo_log_err "$1";
-  exit 1;
-}
 
 function is_proxyserver_installed(){
   if [ -d $proxy_dir ] && [ "$(ls -A $proxy_dir)" ]; then return 0; fi;
