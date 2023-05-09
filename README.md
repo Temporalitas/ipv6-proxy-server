@@ -29,7 +29,7 @@ Old instance will be disabled and new starts without reinstallation very quickly
 
 **Command line arguments:**
 
-- `-s` or `--subnet` - IPv6 [subnet](https://docs.netgate.com/pfsense/en/latest/network/ipv6/subnets.html), fully dedicated for your server. `48` or `64`, default `64`
+- `-s` or `--subnet` - IPv6 [subnet](https://docs.netgate.com/pfsense/en/latest/network/ipv6/subnets.html), fully dedicated for your server. `16`, `32`, `48`, `64`, `80`, `96` or `112`, default `64`
 - `-c` or `--proxy-count` - The total number of proxies you want to have (from 1 to 10000)
 - `-t` or `--proxies-type` - Proxies type - `http` or `socks5`. Default `http`, if no value provided
 - `-u` or `--username` - All proxies auth login

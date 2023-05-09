@@ -6,7 +6,7 @@ if [ "$EUID" -ne 0 ];
 fi;
 
 # Program help info for users
-function usage() { echo "Usage: $0 [-s | --subnet <32|48|64> proxy subnet (default 64)] 
+function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy subnet (default 64)] 
                           [-c | --proxy-count <number> count of proxies] 
                           [-u | --username <string> proxy auth username] 
                           [-p | --password <string> proxy password]
@@ -103,7 +103,7 @@ if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
   usage;
 fi;
 
-if [ $subnet != 64 ] && [ $subnet != 48 ] && [ $subnet != 32 ]; then
+if [ $(expr $subnet % 16) != 0 ]; then
   echo_log_err "Error: invalid value of '-s' (subnet) parameter";
   usage;
 fi;
