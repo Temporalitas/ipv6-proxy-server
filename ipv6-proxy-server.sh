@@ -15,17 +15,19 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                           [-r | --rotating-interval <0-59> proxies extarnal address rotating time in minutes (default 0, disabled)]
                           [--start-port <5000-65536> start port for backconnect ipv4 (default 30000)]
                           [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
+                          [-f | --backconnect-proxies-file <string> path to file, in which backconnect proxies list will be written
+                                when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]    
+                          [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
+                                use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]                                                      
                           [-m | --ipv6-mask <string> constant ipv6 address mask, to which the rotated part is added (or gateaway)
                                 use only if the gateway is different from the subnet address]
                           [-i | --interface <string> full name of ethernet interface, on which IPv6 subnet was allocated
                                 automatically parsed by default, use ONLY if you have non-standard/additional interfaces on your server]
-                          [-f | --backconnect-proxies-file <string> path to file, in which backconnect proxies list will be written
-                                when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]
-                          [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
-                                use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]
+                          [-b | --backconnect-ip <string> server IPv4 backconnect address for proxies
+                                automatically parsed by default, use ONLY if you have non-standard ip allocation on your server]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f:i: --long help,localhost,disable-inet6-ifaces-check,random,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -47,6 +49,7 @@ backconnect_proxies_file="default"
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'NR==1')"
 # Log file for script execution
 script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
+backconnect_ipv4=""
 
 while true; do
   case "$1" in
@@ -58,6 +61,7 @@ while true; do
     -t | --proxies-type ) proxies_type="$2"; shift 2 ;;
     -r | --rotating-interval ) rotating_interval="$2"; shift 2;;
     -m | --ipv6-mask ) subnet_mask="$2"; shift 2;;
+    -b | --backconnect-ip ) backconnect_ipv4="$2"; shift 2;;
     -f | --backconnect_proxies_file ) backconnect_proxies_file="$2"; shift 2;;
     -i | --interface ) interface_name="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
@@ -77,6 +81,10 @@ function echo_log_err(){
 function echo_log_err_and_exit(){
   echo_log_err "$1";
   exit 1;
+}
+
+function is_valid_ip(){
+  if [[ "$1" =~ ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then return 0; else return 1; fi;
 }
 
 # Check validity of user provided arguments
@@ -124,6 +132,12 @@ if [ -z $subnet_mask ]; then
   subnet_mask="$(ip -6 addr|awk '{print $2}'|grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$blocks_count'}[0-9a-fA-F]{1,4}'|cut -d '/' -f1)";
 fi;
 
+if [ ! -z $backconnect_ipv4 ]; then 
+  if ! is_valid_ip $backconnect_ipv4; then
+    echo_log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
+  fi;
+fi;
+
 if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
   echo_log_err "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
   usage;
@@ -166,10 +180,6 @@ function is_package_installed(){
   if [ $(dpkg-query -W -f='${Status}' $1 2>/dev/null | grep -c "ok installed") -eq 0 ]; then return 1; else return 0; fi;
 }
 
-function is_valid_ip(){
-  if [[ "$1" =~ ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then return 0; else return 1; fi;
-}
-
 function create_random_string(){
   tr -dc A-Za-z0-9 </dev/urandom | head -c $1 ; echo ''
 }
@@ -178,17 +188,27 @@ function delete_file_if_exists(){
   if test -f $1; then rm $1; fi;
 }
 
+function install_package(){
+  if ! is_package_installed $1; then
+    apt install $1 -y &>> $script_log_file;
+    if ! is_package_installed $1; then
+      echo_log_err_and_exit "Error: cannot install \"$1\" package";
+    fi;
+  fi;
+}
+
 # DONT use before curl package is installed
 function get_backconnect_ipv4(){
   if [ $use_localhost == true ]; then echo "127.0.0.1"; return; fi;
+  if [ ! -z "$backconnect_ipv4" -a "$backconnect_ipv4" != " " ]; then echo $backconnect_ipv4; return; fi;
 
   local maybe_ipv4=$(ip addr show $interface_name | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
   if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
 
-  if is_package_installed "curl"; then
-    (maybe_ipv4=$(curl https://ipinfo.io/ip)) &> /dev/null
-    if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
-  fi;
+  if ! is_package_installed "curl"; then install_package "curl"; fi;
+
+  (maybe_ipv4=$(curl https://ipinfo.io/ip)) &> /dev/null
+  if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
 
   echo_log_err_and_exit "Error: curl package not installed and cannot parse valid IP from interface info";
 }
@@ -229,18 +249,11 @@ function check_ipv6(){
 
 # Install required libraries
 function install_requred_packages(){
-  apt update &>> $script_log_file
+  apt update &>> $script_log_file;
 
-  requred_packages=("make" "g++" "wget" "curl" "cron")
-  local package
-  for package in ${requred_packages[@]}; do
-    if ! is_package_installed $package; then
-      apt install $package -y &>> $script_log_file
-      if ! is_package_installed $package; then
-        echo_log_err_and_exit "Error: cannot install \"$package\" package";
-      fi;
-    fi;
-  done;
+  requred_packages=("make" "g++" "wget" "curl" "cron");
+  local package;
+  for package in ${requred_packages[@]}; do install_package $package; done;
 
   echo -e "\nAll required packages installed successfully";
 }
@@ -322,7 +335,6 @@ function generate_random_users_if_needed(){
 function create_startup_script(){
   delete_file_if_exists $startup_script_path;
 
-  local backconnect_ipv4=$(get_backconnect_ipv4);
   # Add main script that runs proxy server and rotates external ip's, if server is already running
   cat > $startup_script_path <<-EOF
   #!$bash_location
@@ -450,7 +462,6 @@ function run_proxy_server(){
   chmod +x $startup_script_path;
   $bash_location $startup_script_path;
   if is_proxyserver_running; then 
-    local backconnect_ipv4=$(get_backconnect_ipv4)
     echo -e "\nIPv6 proxy server started successfully. Backconnect IPv4 is available from $backconnect_ipv4:$start_port$credentials to $backconnect_ipv4:$last_port$credentials via $proxies_type protocol";
     echo "You can copy all proxies (with credentials) in this file: $backconnect_proxies_file";
   else
@@ -461,7 +472,6 @@ function run_proxy_server(){
 function write_backconnect_proxies_to_file(){
   delete_file_if_exists $backconnect_proxies_file;
 
-  local backconnect_ipv4=$(get_backconnect_ipv4);
   local proxy_credentials=$credentials;
   if ! touch $backconnect_proxies_file &> $script_log_file; then 
     echo "Backconnect proxies list file path: $backconnect_proxies_file" >> $script_log_file;
@@ -490,6 +500,7 @@ delete_file_if_exists $script_log_file;
 if is_proxyserver_installed; then
   echo -e "Proxy server already installed, reconfiguring:\n";
   check_ipv6;
+  backconnect_ipv4=$(get_backconnect_ipv4);
   generate_random_users_if_needed;
   create_startup_script;
   add_to_cron;
@@ -501,6 +512,7 @@ else
   configure_ipv6;
   install_requred_packages;
   install_3proxy;
+  backconnect_ipv4=$(get_backconnect_ipv4);
   generate_random_users_if_needed;
   create_startup_script;
   add_to_cron;
