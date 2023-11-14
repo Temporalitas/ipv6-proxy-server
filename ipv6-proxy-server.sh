@@ -25,9 +25,10 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                                 automatically parsed by default, use ONLY if you have non-standard/additional interfaces on your server]
                           [-b | --backconnect-ip <string> server IPv4 backconnect address for proxies
                                 automatically parsed by default, use ONLY if you have non-standard ip allocation on your server]
+                          [--uninstall <bool> disable active proxies, uninstall server and clear all metadata]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,uninstall,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -41,8 +42,8 @@ proxies_type="http"
 start_port=30000
 rotating_interval=0
 use_localhost=false
-auth=true
 use_random_auth=false
+uninstall=false
 inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
 # Global network inteface name
@@ -66,6 +67,7 @@ while true; do
     -i | --interface ) interface_name="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
     -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
+    --uninstall ) uninstall=true; shift ;;
     --start-port ) start_port="$2"; shift 2;;
     --random ) use_random_auth=true; shift ;;
     -- ) shift; break ;;
@@ -87,61 +89,69 @@ function is_valid_ip(){
   if [[ "$1" =~ ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then return 0; else return 1; fi;
 }
 
-# Check validity of user provided arguments
-re='^[0-9]+$'
-if ! [[ $proxy_count =~ $re ]] ; then
-	echo_log_err "Error: Argument -c (proxy count) must be a positive integer number";
-	usage;
-fi;
+function is_auth_used(){
+  if [ -z $user ] && [ -z $password] && [ $use_random_auth = false ]; then false; return; else true; return; fi;
+}
 
-if [ -z $user ] && [ -z $password] && [ $use_random_auth = false ]; then auth=false; fi;
-
-if ([ -z $user ] || [ -z $password ]) && [ $auth = true ] && [ $use_random_auth = false ]; then
-	echo_log_err "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)";
-	usage;
-fi;
-
-if ([[ -n $user ]] || [[ -n $password ]]) && [ $use_random_auth = true ]; then
-  echo_log_err "Error: don't provide user or password as arguments, if '--random' flag is set.";
-  usage;
-fi;
-
-if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
-  echo_log_err "Error: invalid value of '-t' (proxy type) parameter";
-  usage;
-fi;
-
-if [ $(expr $subnet % 16) != 0 ]; then
-  echo_log_err "Error: invalid value of '-s' (subnet) parameter";
-  usage;
-fi;
-
-if [ $rotating_interval -lt 0 ] || [ $rotating_interval -gt 59 ]; then
-  echo_log_err "Error: invalid value of '-r' (proxy external ip rotating interval) parameter";
-  usage;
-fi;
-
-if [ $start_port -lt 5000 ] || (($start_port - $proxy_count > 65536 )); then
-  echo_log_err "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
-because Linux has only 65536 potentially ports";
-  usage;
-fi;
-
-if [ -z $subnet_mask ]; then 
-  blocks_count=$((($subnet / 16) - 1));
-  subnet_mask="$(ip -6 addr|awk '{print $2}'|grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$blocks_count'}[0-9a-fA-F]{1,4}'|cut -d '/' -f1)";
-fi;
-
-if [ ! -z $backconnect_ipv4 ]; then 
-  if ! is_valid_ip $backconnect_ipv4; then
-    echo_log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
+function get_subnet_mask(){
+  if [ -z $subnet_mask ]; then 
+    blocks_count=$((($subnet / 16) - 1));
+    subnet_mask="$(ip -6 addr|awk '{print $2}'|grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$blocks_count'}[0-9a-fA-F]{1,4}'|cut -d '/' -f1)";
   fi;
-fi;
 
-if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
-  echo_log_err "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
-  usage;
-fi;
+  echo $subnet_mask;
+}
+
+function check_startup_parameters(){
+  # Check validity of user provided arguments
+  re='^[0-9]+$'
+  if ! [[ $proxy_count =~ $re ]] ; then
+    echo_log_err "Error: Argument -c (proxy count) must be a positive integer number";
+    usage;
+  fi;
+
+  if ([ -z $user ] || [ -z $password ]) && is_auth_used && [ $use_random_auth = false ]; then
+    echo_log_err "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)";
+    usage;
+  fi;
+
+  if ([[ -n $user ]] || [[ -n $password ]]) && [ $use_random_auth = true ]; then
+    echo_log_err "Error: don't provide user or password as arguments, if '--random' flag is set.";
+    usage;
+  fi;
+
+  if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
+    echo_log_err "Error: invalid value of '-t' (proxy type) parameter";
+    usage;
+  fi;
+
+  if [ $(expr $subnet % 16) != 0 ]; then
+    echo_log_err "Error: invalid value of '-s' (subnet) parameter";
+    usage;
+  fi;
+
+  if [ $rotating_interval -lt 0 ] || [ $rotating_interval -gt 59 ]; then
+    echo_log_err "Error: invalid value of '-r' (proxy external ip rotating interval) parameter";
+    usage;
+  fi;
+
+  if [ $start_port -lt 5000 ] || (($start_port - $proxy_count > 65536 )); then
+    echo_log_err "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
+  because Linux has only 65536 potentially ports";
+    usage;
+  fi;
+
+  if [ ! -z $backconnect_ipv4 ]; then 
+    if ! is_valid_ip $backconnect_ipv4; then
+      echo_log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
+    fi;
+  fi;
+
+  if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
+    echo_log_err "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
+    usage;
+  fi;
+}
 
 # Define all needed paths to scripts / configs / etc
 bash_location="$(which bash)"
@@ -165,7 +175,7 @@ cron_script_path="$proxy_dir/proxy-server.cron"
 # Last opened port for backconnect proxy
 last_port=$(($start_port + $proxy_count - 1));
 # Proxy credentials - username and password, delimited by ':', if exist, or empty string, if auth == false
-credentials=$([[ $auth == true ]] && [[ $use_random_auth == false ]] && echo -n ":$user:$password" || echo -n "");
+credentials=$(is_auth_used && [[ $use_random_auth == false ]] && echo -n ":$user:$password" || echo -n "");
 
 function is_proxyserver_installed(){
   if [ -d $proxy_dir ] && [ "$(ls -A $proxy_dir)" ]; then return 0; fi;
@@ -322,6 +332,19 @@ function add_to_cron(){
   fi;
 }
 
+function remove_from_cron(){
+  # Delete all occurencies of proxy script in crontab
+  crontab -l | grep -v $startup_script_path > $cron_script_path;
+  crontab $cron_script_path;
+  systemctl restart cron;
+
+  if crontab -l | grep -q $startup_script_path; then
+    echo_log_err "Warning: cannot delete proxy script from crontab";
+  else
+    echo "Proxy script deleted from crontab successfully";
+  fi;
+}
+
 function generate_random_users_if_needed(){
   # No need to generate random usernames and passwords for proxies, if auth=none or one username/password for all proxies provided
   if [ $use_random_auth != true ]; then return; fi;
@@ -332,8 +355,25 @@ function generate_random_users_if_needed(){
   done;
 }
 
+function kill_3proxy(){
+  ps -ef | awk '/[3]proxy/{print $2}' | while read -r pid; do
+    kill $pid
+  done;
+}
+
+function remove_ipv6_addresses_from_iface(){
+  if test -f $random_ipv6_list_file; then
+    # Remove old ips from interface
+    for ipv6_address in $(cat $random_ipv6_list_file); do ip -6 addr del $ipv6_address dev $interface_name; done;
+    rm $random_ipv6_list_file; 
+  fi;
+}
+
 function create_startup_script(){
   delete_file_if_exists $startup_script_path;
+
+  is_auth_used;
+  local use_auth=$?;
 
   # Add main script that runs proxy server and rotates external ip's, if server is already running
   cat > $startup_script_path <<-EOF
@@ -354,7 +394,7 @@ function create_startup_script(){
   if test -f $random_ipv6_list_file; 
   then
     # Remove old ips from interface
-    for ipv6_address in \$(cat $random_ipv6_list_file); do ip -6 addr del \$ipv6_address dev $interface_name;done;
+    for ipv6_address in \$(cat $random_ipv6_list_file); do ip -6 addr del \$ipv6_address dev $interface_name; done;
     rm $random_ipv6_list_file; 
   fi;
 
@@ -365,7 +405,7 @@ function create_startup_script(){
   function rh () { echo \${array[\$RANDOM%16]}; }
 
   rnd_subnet_ip () {
-    echo -n $subnet_mask;
+    echo -n $(get_subnet_mask);
     symbol=$subnet
     while (( \$symbol < 128)); do
       if ((\$symbol % 16 == 0)); then echo -n :; fi;
@@ -394,7 +434,7 @@ function create_startup_script(){
     setuid 65535"
   auth_part="auth none"
 
-  if [ $auth = true ]; then
+  if [ $use_auth = true ]; then
     auth_part="auth strong
       users $user:CL:$password
       allow $user"
@@ -434,7 +474,25 @@ EOF
   
 }
 
+function close_ufw_backconnect_ports(){
+  if ! is_package_installed "ufw" || [ $use_localhost = true ] || ! test -f $backconnect_proxies_file; then return; fi;
+
+  local first_opened_port=$(head -n 1 $backconnect_proxies_file | awk -F ':' '{print $2}');
+  local last_opened_port=$(tail -n 1 $backconnect_proxies_file | awk -F ':' '{print $2}');
+
+  ufw delete allow $first_opened_port:$last_opened_port/tcp >> $script_log_file;
+  ufw delete allow $first_opened_port:$last_opened_port/udp >> $script_log_file;
+
+  if ufw status | grep -qw $first_opened_port:$last_opened_port; then
+    echo_log_err "Cannot delete UFW rules for backconnect proxies";
+  else
+    echo "UFW rules for backconnect proxies cleared successfully";
+  fi;
+}
+
 function open_ufw_backconnect_ports(){
+  close_ufw_backconnect_ports;
+
   # No need open ports if backconnect proxies on localhost
   if [ $use_localhost = true ]; then return; fi;
 
@@ -497,7 +555,21 @@ function write_backconnect_proxies_to_file(){
 
 delete_file_if_exists $script_log_file;
 
+if [ $uninstall = true ]; then
+  if ! is_proxyserver_installed; then echo_log_err_and_exit "Proxy server is not installed"; fi;
+  
+  remove_from_cron;
+  kill_3proxy;
+  remove_ipv6_addresses_from_iface;
+  close_ufw_backconnect_ports;
+  rm -rf $proxy_dir;
+  delete_file_if_exists $backconnect_proxies_file;
+  echo -e "\nIPv6 proxy server successfully uninstalled. If you want to reinstall, just run this script again.";
+  exit 0;
+fi;
+
 if is_proxyserver_installed; then
+  check_startup_parameters;
   echo -e "Proxy server already installed, reconfiguring:\n";
   check_ipv6;
   backconnect_ipv4=$(get_backconnect_ipv4);
@@ -508,6 +580,7 @@ if is_proxyserver_installed; then
   run_proxy_server;
   write_backconnect_proxies_to_file;
 else
+  check_startup_parameters;
   check_ipv6;
   configure_ipv6;
   install_requred_packages;

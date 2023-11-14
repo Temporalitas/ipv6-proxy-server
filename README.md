@@ -19,6 +19,8 @@ chmod +x ipv6-proxy-server.sh
 
 Uncomment first line or run all commands with `sudo` if you`re not under root.
 
+
+
 If script already installed, you can just run one command to reconfigure parameters, for example:
 
 ```bash
@@ -26,6 +28,18 @@ If script already installed, you can just run one command to reconfigure paramet
 ```
 
 Old instance will be disabled and new starts without reinstallation very quickly.
+
+
+
+If you want to uninstall proxy server, just run:
+
+```bash
+./ipv6-proxy-server.sh --uninstall
+```
+
+Proxy server will stopped, all configuration files, firewalls, shedulers and so on will be reset to initial state.
+
+
 
 **Command line arguments:**
 
@@ -44,6 +58,7 @@ Old instance will be disabled and new starts without reinstallation very quickly
 - `-f` or `--backconnect-proxies-file` - path to file, in which backconnect proxies list will be written when proxies start working (default `~/proxyserver/backconnect_proxies.list`). You can just copy all proxies from this file and use them in your soft as list of IPv6 proxies.
 - `-m` or `--ipv6-mask` - first blocks on server subnet, unchanged part, use ONLY if script cannot parse ipv6 mask automatically. For example, if the external ipv6 address on server is `2a03:6f01:5::1da6` and you want to use entire /64 subnet, script cannot parse ipv6 gateaway because of address zero-field replacement with `::`. Real mask for /64 subnet is first four blocks - `2a03:6f01:5:0`
 - `-i` or `--interface` - ethernet interface name, to which IPv6 subnet is allocated and where all proxies will be raised. Automatically parsed from system info by default, use ONLY if you have non-standard/additional interfaces on your server.
+- `--uninstall` - uninstall proxy server, you don't need to provide any other parameters with it.
 
 ### License
 
