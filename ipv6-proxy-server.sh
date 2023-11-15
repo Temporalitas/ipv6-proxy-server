@@ -26,9 +26,10 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                           [-b | --backconnect-ip <string> server IPv4 backconnect address for proxies
                                 automatically parsed by default, use ONLY if you have non-standard ip allocation on your server]
                           [--uninstall <bool> disable active proxies, uninstall server and clear all metadata]
+                          [--info <bool> print info about running proxy server]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,uninstall,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,uninstall,info,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -44,6 +45,7 @@ rotating_interval=0
 use_localhost=false
 use_random_auth=false
 uninstall=false
+print_info=false
 inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
 # Global network inteface name
@@ -68,6 +70,7 @@ while true; do
     -l | --localhost ) use_localhost=true; shift ;;
     -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
     --uninstall ) uninstall=true; shift ;;
+    --info ) print_info=true; shift ;;
     --start-port ) start_port="$2"; shift 2;;
     --random ) use_random_auth=true; shift ;;
     -- ) shift; break ;;
@@ -153,6 +156,8 @@ user_home_dir="$(pwd)"
 proxy_dir="$user_home_dir/proxyserver"
 # Path to file with config for backconnect proxy server
 proxyserver_config_path="$proxy_dir/3proxy/3proxy.cfg"
+# Path to file with nformation about running proxy server in user-readable format
+proxyserver_info_file="$proxy_dir/running_server.info"
 # Path to file with all result (external) ipv6 addresses
 random_ipv6_list_file="$proxy_dir/ipv6.list"
 # Path to file with proxy random usernames/password
@@ -565,8 +570,38 @@ function write_backconnect_proxies_to_file(){
   done;
 }
 
+function write_proxyserver_info(){
+  delete_file_if_exists $proxyserver_info_file;
 
-delete_file_if_exists $script_log_file;
+  cat > $proxyserver_info_file <<-EOF
+User info:
+  Proxy count: $proxy_count
+  Proxy type: $proxies_type
+  Proxy IP: $(get_backconnect_ipv4)
+  Proxy ports: between $start_port and $last_port
+  Auth: $(if is_auth_used; then if [ $use_random_auth = true ]; then echo "random user/password for each proxy"; else echo "user - $user, password - $password"; fi; else echo "disabled"; fi;)
+  File with backconnect proxy list: $backconnect_proxies_file
+
+
+EOF
+
+  cat >> $proxyserver_info_file <<-EOF
+Technical info:
+  Subnet: /$subnet
+  Subnet mask: $subnet_mask
+  File with generated IPv6 gateway addresses: $random_ipv6_list_file
+  $(if [ $rotating_interval -ne 0 ]; then echo "Rotating interval: every $rotating_interval minutes"; else echo "Rotating: disabled"; fi;)
+EOF
+}
+
+if [ $print_info = true ]; then
+  if ! is_proxyserver_installed; then echo_log_err_and_exit "Proxy server isn't installed"; fi;
+  if ! is_proxyserver_running; then echo_log_err_and_exit "Proxy server isn't running. You can check log of previous run attempt in $script_log_file"; fi;
+  if ! test -f $proxyserver_info_file; then echo_log_err_and_exit "File with information about running proxy server not found"; fi;
+
+  cat $proxyserver_info_file;
+  exit 0;
+fi;
 
 if [ $uninstall = true ]; then
   if ! is_proxyserver_installed; then echo_log_err_and_exit "Proxy server is not installed"; fi;
@@ -581,30 +616,24 @@ if [ $uninstall = true ]; then
   exit 0;
 fi;
 
+
+delete_file_if_exists $script_log_file;
+check_startup_parameters;
+check_ipv6;
 if is_proxyserver_installed; then
-  check_startup_parameters;
   echo -e "Proxy server already installed, reconfiguring:\n";
-  check_ipv6;
-  backconnect_ipv4=$(get_backconnect_ipv4);
-  generate_random_users_if_needed;
-  create_startup_script;
-  add_to_cron;
-  open_ufw_backconnect_ports;
-  run_proxy_server;
-  write_backconnect_proxies_to_file;
 else
-  check_startup_parameters;
-  check_ipv6;
   configure_ipv6;
   install_requred_packages;
   install_3proxy;
-  backconnect_ipv4=$(get_backconnect_ipv4);
-  generate_random_users_if_needed;
-  create_startup_script;
-  add_to_cron;
-  open_ufw_backconnect_ports;
-  run_proxy_server;
-  write_backconnect_proxies_to_file;
 fi;
+backconnect_ipv4=$(get_backconnect_ipv4);
+generate_random_users_if_needed;
+create_startup_script;
+add_to_cron;
+open_ufw_backconnect_ports;
+run_proxy_server;
+write_backconnect_proxies_to_file;
+write_proxyserver_info;
 
 exit 0
