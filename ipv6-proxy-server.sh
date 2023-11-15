@@ -262,7 +262,6 @@ function install_requred_packages(){
   apt update &>> $script_log_file;
 
   requred_packages=("make" "g++" "wget" "curl" "cron");
-  local package;
   for package in ${requred_packages[@]}; do install_package $package; done;
 
   echo -e "\nAll required packages installed successfully";
@@ -294,15 +293,13 @@ function install_3proxy(){
 
 function configure_ipv6(){
   # Enable sysctl options for rerouting and bind ips from subnet to default interface
-
-  tee -a /etc/sysctl.conf > /dev/null << EOF
-  net.ipv6.conf.$interface_name.proxy_ndp=1
-  net.ipv6.conf.all.proxy_ndp=1
-  net.ipv6.conf.default.forwarding=1
-  net.ipv6.conf.all.forwarding=1
-  net.ipv6.ip_nonlocal_bind=1
-EOF
+  required_options=("conf.$interface_name.proxy_ndp" "conf.all.proxy_ndp" "conf.default.forwarding" "conf.all.forwarding" "ip_nonlocal_bind");
+  for option in ${required_options[@]}; do
+    full_option="net.ipv6.$option=1";
+    if ! cat /etc/sysctl.conf | grep -v "#" | grep $full_option; then echo $full_option >> /etc/sysctl.conf; fi;
+  done;
   sysctl -p &>> $script_log_file;
+
   if [[ $(cat /proc/sys/net/ipv6/conf/$interface_name/proxy_ndp) == 1 ]] && [[ $(cat /proc/sys/net/ipv6/ip_nonlocal_bind) == 1 ]]; then 
     echo "IPv6 network sysctl data configured successfully";
   else
