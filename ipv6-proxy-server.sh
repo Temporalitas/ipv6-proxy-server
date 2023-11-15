@@ -93,15 +93,6 @@ function is_auth_used(){
   if [ -z $user ] && [ -z $password] && [ $use_random_auth = false ]; then false; return; else true; return; fi;
 }
 
-function get_subnet_mask(){
-  if [ -z $subnet_mask ]; then 
-    blocks_count=$((($subnet / 16) - 1));
-    subnet_mask="$(ip -6 addr|awk '{print $2}'|grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$blocks_count'}[0-9a-fA-F]{1,4}'|cut -d '/' -f1)";
-  fi;
-
-  echo $subnet_mask;
-}
-
 function check_startup_parameters(){
   # Check validity of user provided arguments
   re='^[0-9]+$'
@@ -125,8 +116,8 @@ function check_startup_parameters(){
     usage;
   fi;
 
-  if [ $(expr $subnet % 16) != 0 ]; then
-    echo_log_err "Error: invalid value of '-s' (subnet) parameter";
+  if [ $(expr $subnet % 4) != 0 ]; then
+    echo_log_err "Error: invalid value of '-s' (subnet) parameter, must be divisible by 4";
     usage;
   fi;
 
@@ -192,6 +183,45 @@ function is_package_installed(){
 
 function create_random_string(){
   tr -dc A-Za-z0-9 </dev/urandom | head -c $1 ; echo ''
+}
+
+function kill_3proxy(){
+  ps -ef | awk '/[3]proxy/{print $2}' | while read -r pid; do
+    kill $pid
+  done;
+}
+
+function remove_ipv6_addresses_from_iface(){
+  if test -f $random_ipv6_list_file; then
+    # Remove old ips from interface
+    for ipv6_address in $(cat $random_ipv6_list_file); do ip -6 addr del $ipv6_address dev $interface_name; done;
+    rm $random_ipv6_list_file; 
+  fi;
+}
+
+function get_subnet_mask(){
+  if [ -z $subnet_mask ]; then
+    # If we parse addresses from iface and want to use lower subnets, we need to clean existing proxy from interface before parsing
+    if is_proxyserver_running; then kill_3proxy; fi;
+    if is_proxyserver_installed; then remove_ipv6_addresses_from_iface; fi;
+    
+    full_blocks_count=$(($subnet / 16));
+    # Full external ipv6 address, allocated to the interface
+    ipv6=$(ip -6 addr | awk '{print $2}' | grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:)+[0-9a-fA-F]{1,4}' | cut -d '/' -f1);
+
+    subnet_mask=$(echo $ipv6 | grep -m1 -oP '^(?!fe80)([0-9a-fA-F]{1,4}:){'$(($full_blocks_count-1))'}[0-9a-fA-F]{1,4}');
+    if [ $(expr $subnet % 16) -ne 0 ]; then
+      # Get last "uncomplete" block: if we want /68 subnet, get block from 64 to 80
+      block_part=$(echo $ipv6 | awk -v block=$(($full_blocks_count + 1)) -F ':' '{print $block}' | tr -d ' ');
+      # Because leading zeros can be skipped in the block, we need to add them if needed
+      while ((${#block_part} < 4)); do block_part="0$block_part"; done;
+      # Get part of block needed for subnet mask: if we want /72 subnet, we get 2 symbols - (72 (subnet) - 64 (full 4 blocks)) / 4 (2^4) in one hex digit
+      symbols_to_include=$(echo $block_part | head -c $(($(expr $subnet % 16) / 4)));
+      subnet_mask="$subnet_mask:$symbols_to_include";
+    fi;
+  fi;
+
+  echo $subnet_mask;
 }
 
 function delete_file_if_exists(){
@@ -296,7 +326,7 @@ function configure_ipv6(){
   required_options=("conf.$interface_name.proxy_ndp" "conf.all.proxy_ndp" "conf.default.forwarding" "conf.all.forwarding" "ip_nonlocal_bind");
   for option in ${required_options[@]}; do
     full_option="net.ipv6.$option=1";
-    if ! cat /etc/sysctl.conf | grep -v "#" | grep $full_option; then echo $full_option >> /etc/sysctl.conf; fi;
+    if ! cat /etc/sysctl.conf | grep -v "#" | grep -q $full_option; then echo $full_option >> /etc/sysctl.conf; fi;
   done;
   sysctl -p &>> $script_log_file;
 
@@ -350,20 +380,6 @@ function generate_random_users_if_needed(){
   for i in $(seq 1 $proxy_count); do 
     echo $(create_random_string 8):$(create_random_string 8) >> $random_users_list_file;
   done;
-}
-
-function kill_3proxy(){
-  ps -ef | awk '/[3]proxy/{print $2}' | while read -r pid; do
-    kill $pid
-  done;
-}
-
-function remove_ipv6_addresses_from_iface(){
-  if test -f $random_ipv6_list_file; then
-    # Remove old ips from interface
-    for ipv6_address in $(cat $random_ipv6_list_file); do ip -6 addr del $ipv6_address dev $interface_name; done;
-    rm $random_ipv6_list_file; 
-  fi;
 }
 
 function create_startup_script(){
