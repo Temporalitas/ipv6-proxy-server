@@ -452,7 +452,7 @@ function create_startup_script(){
     setuid 65535"
   auth_part="auth none"
 
-  if [ $use_auth = true ]; then
+  if [ $use_auth -eq 0 ]; then
     auth_part="auth strong
       users $user:CL:$password
       allow $user"
