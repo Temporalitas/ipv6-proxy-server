@@ -25,11 +25,14 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                                 automatically parsed by default, use ONLY if you have non-standard/additional interfaces on your server]
                           [-b | --backconnect-ip <string> server IPv4 backconnect address for proxies
                                 automatically parsed by default, use ONLY if you have non-standard ip allocation on your server]
+                          [--allowed-hosts <string> allowed hosts or IPs (3proxy format), for example "google.com,*.google.com,*.gstatic.com"
+                                if at least one host is allowed, the rest are banned by default]
+                          [--denied-hosts <string> banned hosts or IP addresses in quotes (3proxy format)]
                           [--uninstall <bool> disable active proxies, uninstall server and clear all metadata]
                           [--info <bool> print info about running proxy server]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,uninstall,info,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip: -- "$@")
+options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,localhost,disable-inet6-ifaces-check,random,uninstall,info,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip:,allowed-hosts:,denied-hosts: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -69,6 +72,8 @@ while true; do
     -i | --interface ) interface_name="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
     -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
+    --allowed-hosts ) allowed_hosts="$2"; shift 2;;
+    --denied-hosts ) denied_hosts="$2"; shift 2;;
     --uninstall ) uninstall=true; shift ;;
     --info ) print_info=true; shift ;;
     --start-port ) start_port="$2"; shift 2;;
@@ -137,6 +142,10 @@ function check_startup_parameters(){
     if ! is_valid_ip $backconnect_ipv4; then
       log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
     fi;
+  fi;
+
+  if [ -n "$allowed_hosts" ] && [ -n "$denied_hosts" ]; then
+    log_err_print_usage_and_exit "Error: if '--allow-hosts' is specified, you cannot use '--deny-hosts', the rest that isn't allowed is denied by default";
   fi;
 
   if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
@@ -447,18 +456,29 @@ function create_startup_script(){
     timeouts 1 5 30 60 180 1800 15 60
     setgid 65535
     setuid 65535"
-  auth_part="auth none"
 
+  auth_part="auth iponly"
   if [ $use_auth -eq 0 ]; then
-    auth_part="auth strong
-      users $user:CL:$password
-      allow $user"
+    auth_part="
+      auth strong
+      users $user:CL:$password"
+  fi;
+  
+  if [ -n "$denied_hosts" ]; then 
+    access_rules_part="
+      deny * * $denied_hosts
+      allow *"
+  else
+    access_rules_part="
+      allow * * $allowed_hosts
+      deny *"
   fi;
 
   dedent immutable_config_part;
-  dedent auth_part;   
+  dedent auth_part;
+  dedent access_rules_part;
 
-  echo "\$immutable_config_part"\$'\n'"\$auth_part"  > $proxyserver_config_path;
+  echo "\$immutable_config_part"\$'\n'"\$auth_part"\$'\n'"\$access_rules_part"  > $proxyserver_config_path;
 
   # Add all ipv6 backconnect proxy with random adresses in proxy server startup config
   port=$start_port
@@ -471,7 +491,7 @@ function create_startup_script(){
         read -r username password <<< "\${proxy_random_credentials[\$count]}";
         echo "flush" >> $proxyserver_config_path;
         echo "users \$username:CL:\$password" >> $proxyserver_config_path;
-        echo "allow \$username" >> $proxyserver_config_path;
+        echo "\$access_rules_part" >> $proxyserver_config_path;
         IFS=$' \t\n';
       fi;
       echo "\$proxy_startup_depending_on_type -p\$port -i$backconnect_ipv4 -e\$random_ipv6_address" >> $proxyserver_config_path;
@@ -577,6 +597,7 @@ User info:
   Proxy IP: $(get_backconnect_ipv4)
   Proxy ports: between $start_port and $last_port
   Auth: $(if is_auth_used; then if [ $use_random_auth = true ]; then echo "random user/password for each proxy"; else echo "user - $user, password - $password"; fi; else echo "disabled"; fi;)
+  Rules: $(if ([ -n "$denied_hosts" ] || [ -n "$allowed_hosts" ]); then if [ -n "$denied_hosts" ]; then echo "denied hosts - $denied_hosts, all others are allowed"; else echo "allowed hosts - $allowed_hosts, all others are denied"; fi; else echo "no rules specified, all hosts are allowed"; fi;)
   File with backconnect proxy list: $backconnect_proxies_file
 
 
