@@ -78,14 +78,19 @@ while true; do
   esac
 done
 
-function echo_log_err(){
+function log_err(){
   echo $1 1>&2;
   echo -e "$1\n" &>> $script_log_file;
 }
 
-function echo_log_err_and_exit(){
-  echo_log_err "$1";
+function log_err_and_exit(){
+  log_err "$1";
   exit 1;
+}
+
+function log_err_print_usage_and_exit(){
+  log_err "$1";
+  usage;
 }
 
 function is_valid_ip(){
@@ -100,50 +105,42 @@ function check_startup_parameters(){
   # Check validity of user provided arguments
   re='^[0-9]+$'
   if ! [[ $proxy_count =~ $re ]] ; then
-    echo_log_err "Error: Argument -c (proxy count) must be a positive integer number";
-    usage;
+    log_err_print_usage_and_exit "Error: Argument -c (proxy count) must be a positive integer number";
   fi;
 
   if ([ -z $user ] || [ -z $password ]) && is_auth_used && [ $use_random_auth = false ]; then
-    echo_log_err "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)";
-    usage;
+    log_err_print_usage_and_exit "Error: user and password for proxy with auth is required (specify both '--username' and '--password' startup parameters)";
   fi;
 
   if ([[ -n $user ]] || [[ -n $password ]]) && [ $use_random_auth = true ]; then
-    echo_log_err "Error: don't provide user or password as arguments, if '--random' flag is set.";
-    usage;
+    log_err_print_usage_and_exit "Error: don't provide user or password as arguments, if '--random' flag is set.";
   fi;
 
   if [ $proxies_type != "http" ] && [ $proxies_type != "socks5" ] ; then
-    echo_log_err "Error: invalid value of '-t' (proxy type) parameter";
-    usage;
+    log_err_print_usage_and_exit "Error: invalid value of '-t' (proxy type) parameter";
   fi;
 
   if [ $(expr $subnet % 4) != 0 ]; then
-    echo_log_err "Error: invalid value of '-s' (subnet) parameter, must be divisible by 4";
-    usage;
+    log_err_print_usage_and_exit "Error: invalid value of '-s' (subnet) parameter, must be divisible by 4";
   fi;
 
   if [ $rotating_interval -lt 0 ] || [ $rotating_interval -gt 59 ]; then
-    echo_log_err "Error: invalid value of '-r' (proxy external ip rotating interval) parameter";
-    usage;
+    log_err_print_usage_and_exit "Error: invalid value of '-r' (proxy external ip rotating interval) parameter";
   fi;
 
   if [ $start_port -lt 5000 ] || (($start_port - $proxy_count > 65536 )); then
-    echo_log_err "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
+    log_err_print_usage_and_exit "Wrong '--start-port' parameter value, it must be more than 5000 and '--start-port' + '--proxy-count' must be lower than 65536,
   because Linux has only 65536 potentially ports";
-    usage;
   fi;
 
   if [ ! -z $backconnect_ipv4 ]; then 
     if ! is_valid_ip $backconnect_ipv4; then
-      echo_log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
+      log_err_and_exit "Error: ip provided in 'backconnect-ip' argument is invalid. Provide valid IP or don't use this argument"
     fi;
   fi;
 
   if cat /sys/class/net/$interface_name/operstate 2>&1 | grep -q "No such file or directory"; then
-    echo_log_err "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
-    usage;
+    log_err_print_usage_and_exit "Incorrect ethernet interface name \"$interface_name\", provide correct name using parameter '--interface'";
   fi;
 }
 
@@ -237,7 +234,7 @@ function install_package(){
   if ! is_package_installed $1; then
     apt install $1 -y &>> $script_log_file;
     if ! is_package_installed $1; then
-      echo_log_err_and_exit "Error: cannot install \"$1\" package";
+      log_err_and_exit "Error: cannot install \"$1\" package";
     fi;
   fi;
 }
@@ -255,7 +252,7 @@ function get_backconnect_ipv4(){
   (maybe_ipv4=$(curl https://ipinfo.io/ip)) &> /dev/null
   if is_valid_ip $maybe_ipv4; then echo $maybe_ipv4; return; fi;
 
-  echo_log_err_and_exit "Error: curl package not installed and cannot parse valid IP from interface info";
+  log_err_and_exit "Error: curl package not installed and cannot parse valid IP from interface info";
 }
 
 
@@ -264,30 +261,30 @@ function check_ipv6(){
   if test -f /proc/net/if_inet6; then
 	  echo "IPv6 interface is enabled";
   else
-	  echo_log_err_and_exit "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system.";
+	  log_err_and_exit "Error: inet6 (ipv6) interface is not enabled. Enable IP v6 on your system.";
   fi;
 
   if [[ $(ip -6 addr show scope global) ]]; then
     echo "IPv6 global address is allocated on server successfully";
   else
-    echo_log_err_and_exit "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support.";
+    log_err_and_exit "Error: IPv6 global address is not allocated on server, allocate it or contact your VPS/VDS support.";
   fi;
 
   local ifaces_config="/etc/network/interfaces";
   if [ $inet6_network_interfaces_configuration_check = true ]; then
-    if [ ! -f $ifaces_config ]; then echo_log_err_and_exit "Error: interfaces config ($ifaces_config) doesn't exist"; fi;
+    if [ ! -f $ifaces_config ]; then log_err_and_exit "Error: interfaces config ($ifaces_config) doesn't exist"; fi;
     
     if grep 'inet6' $ifaces_config > /dev/null; then
       echo "Network interfaces for IPv6 configured correctly";
     else
-      echo_log_err_and_exit "Error: $ifaces_config has no inet6 (IPv6) configuration.";
+      log_err_and_exit "Error: $ifaces_config has no inet6 (IPv6) configuration.";
     fi;
   fi;
 
   if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]] &> /dev/null; then 
     echo "Test ping google.com using IPv6 successfully";
   else
-    echo_log_err_and_exit "Error: test ping google.com through IPv6 failed, network is unreachable.";
+    log_err_and_exit "Error: test ping google.com through IPv6 failed, network is unreachable.";
   fi; 
 
 }
@@ -321,7 +318,7 @@ function install_3proxy(){
   if test -f "$proxy_dir/3proxy/bin/3proxy"; then
     echo "Proxy server builded successfully"
   else
-    echo_log_err_and_exit "Error: proxy server build from source code failed."
+    log_err_and_exit "Error: proxy server build from source code failed."
   fi;
   cd ..
 }
@@ -339,7 +336,7 @@ function configure_ipv6(){
     echo "IPv6 network sysctl data configured successfully";
   else
     cat /etc/sysctl.conf &>> $script_log_file;
-    echo_log_err_and_exit "Error: cannot configure IPv6 config";
+    log_err_and_exit "Error: cannot configure IPv6 config";
   fi;
 }
 
@@ -360,7 +357,7 @@ function add_to_cron(){
   if crontab -l | grep -q $startup_script_path; then 
     echo "Proxy startup script added to cron autorun successfully";
   else
-    echo_log_err "Warning: adding script to cron autorun failed.";
+    log_err "Warning: adding script to cron autorun failed.";
   fi;
 }
 
@@ -371,7 +368,7 @@ function remove_from_cron(){
   systemctl restart cron;
 
   if crontab -l | grep -q $startup_script_path; then
-    echo_log_err "Warning: cannot delete proxy script from crontab";
+    log_err "Warning: cannot delete proxy script from crontab";
   else
     echo "Proxy script deleted from crontab successfully";
   fi;
@@ -502,7 +499,7 @@ function close_ufw_backconnect_ports(){
   ufw delete allow $first_opened_port:$last_opened_port/udp >> $script_log_file;
 
   if ufw status | grep -qw $first_opened_port:$last_opened_port; then
-    echo_log_err "Cannot delete UFW rules for backconnect proxies";
+    log_err "Cannot delete UFW rules for backconnect proxies";
   else
     echo "UFW rules for backconnect proxies cleared successfully";
   fi;
@@ -523,8 +520,8 @@ function open_ufw_backconnect_ports(){
     if ufw status | grep -qw $start_port:$last_port; then
       echo "UFW ports for backconnect proxies opened successfully";
     else
-      echo_log_err $(ufw status);
-      echo_log_err_and_exit "Cannot open ports for backconnect proxies, configure ufw please";
+      log_err $(ufw status);
+      log_err_and_exit "Cannot open ports for backconnect proxies, configure ufw please";
     fi;
 
   else
@@ -533,7 +530,7 @@ function open_ufw_backconnect_ports(){
 }
 
 function run_proxy_server(){
-  if [ ! -f $startup_script_path ]; then echo_log_err_and_exit "Error: proxy startup script doesn't exist."; fi;
+  if [ ! -f $startup_script_path ]; then log_err_and_exit "Error: proxy startup script doesn't exist."; fi;
 
   chmod +x $startup_script_path;
   $bash_location $startup_script_path;
@@ -541,7 +538,7 @@ function run_proxy_server(){
     echo -e "\nIPv6 proxy server started successfully. Backconnect IPv4 is available from $backconnect_ipv4:$start_port$credentials to $backconnect_ipv4:$last_port$credentials via $proxies_type protocol";
     echo "You can copy all proxies (with credentials) in this file: $backconnect_proxies_file";
   else
-    echo_log_err_and_exit "Error: cannot run proxy server";
+    log_err_and_exit "Error: cannot run proxy server";
   fi;
 }
 
@@ -551,7 +548,7 @@ function write_backconnect_proxies_to_file(){
   local proxy_credentials=$credentials;
   if ! touch $backconnect_proxies_file &> $script_log_file; then 
     echo "Backconnect proxies list file path: $backconnect_proxies_file" >> $script_log_file;
-    echo_log_err "Warning: provided invalid path to backconnect proxies list file";
+    log_err "Warning: provided invalid path to backconnect proxies list file";
     return;
   fi;
 
@@ -595,16 +592,16 @@ EOF
 }
 
 if [ $print_info = true ]; then
-  if ! is_proxyserver_installed; then echo_log_err_and_exit "Proxy server isn't installed"; fi;
-  if ! is_proxyserver_running; then echo_log_err_and_exit "Proxy server isn't running. You can check log of previous run attempt in $script_log_file"; fi;
-  if ! test -f $proxyserver_info_file; then echo_log_err_and_exit "File with information about running proxy server not found"; fi;
+  if ! is_proxyserver_installed; then log_err_and_exit "Proxy server isn't installed"; fi;
+  if ! is_proxyserver_running; then log_err_and_exit "Proxy server isn't running. You can check log of previous run attempt in $script_log_file"; fi;
+  if ! test -f $proxyserver_info_file; then log_err_and_exit "File with information about running proxy server not found"; fi;
 
   cat $proxyserver_info_file;
   exit 0;
 fi;
 
 if [ $uninstall = true ]; then
-  if ! is_proxyserver_installed; then echo_log_err_and_exit "Proxy server is not installed"; fi;
+  if ! is_proxyserver_installed; then log_err_and_exit "Proxy server is not installed"; fi;
   
   remove_from_cron;
   kill_3proxy;
