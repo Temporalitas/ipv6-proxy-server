@@ -415,9 +415,10 @@ function create_startup_script(){
     proxyserver_process_pids+=("\$pid")
   done
 
-  # Save old IPv6 addresses in temporary file to delete after rotating
+  # Save old IPv6 addresses in temporary file to delete from interface after rotating
   old_ipv6_list_file="$random_ipv6_list_file.old"
   if test -f $random_ipv6_list_file; then cp $random_ipv6_list_file \$old_ipv6_list_file; fi;
+  rm $random_ipv6_list_file; 
 
   # Array with allowed symbols in hex (in ipv6 addresses)
   array=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
