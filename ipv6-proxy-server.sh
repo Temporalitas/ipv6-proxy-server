@@ -505,17 +505,17 @@ function create_startup_script(){
   for ipv6_address in \$(cat ${random_ipv6_list_file}); do ip -6 addr add \$ipv6_address dev $interface_name; done;
   ${user_home_dir}/proxyserver/3proxy/bin/3proxy ${proxyserver_config_path}
 
+  # Kill old 3proxy daemon, if it's working
+  for pid in "\${proxyserver_process_pids[@]}"; do
+    kill \$pid;
+  done;
+
   # Remove old random ip list after running new 3proxy instance
   if test -f \$old_ipv6_list_file; then
     # Remove old ips from interface
     for ipv6_address in \$(cat \$old_ipv6_list_file); do ip -6 addr del \$ipv6_address dev $interface_name; done;
     rm \$old_ipv6_list_file; 
   fi;
-
-  # Kill old 3proxy daemon, if it's working
-  for pid in "\${proxyserver_process_pids[@]}"; do
-    kill \$pid;
-  done;
 
   exit 0;
 EOF
