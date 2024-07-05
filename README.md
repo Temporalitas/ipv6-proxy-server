@@ -2,7 +2,7 @@
 
 Create your own IPv6 backconnect proxy server with only one script on any Linux distribution. Any number of random IPs on the subnet, ideal for parsing and traffic arbitrage (Google/Facebook/Youtube/Instagram and many others support IPv6).
 
-Ask questions: [@just_temp](https://t.me/just_temp)
+Ask questions [in issues](https://github.com/Temporalitas/ipv6-proxy-server/issues), if you have some.
 
 ### Tutorial
 
@@ -12,7 +12,7 @@ Just run:
 
 ```bash
 #sudo su
-wget https://raw.githubusercontent.com/Theodikes/ipv6-proxy-server/master/ipv6-proxy-server.sh && chmod +x ipv6-proxy-server.sh
+wget https://raw.githubusercontent.com/Temporalitas/ipv6-proxy-server/master/ipv6-proxy-server.sh && chmod +x ipv6-proxy-server.sh
 ./ipv6-proxy-server.sh -s 64 -c 100 -u username -p password -t http -r 10
 ```
 
@@ -61,6 +61,19 @@ Proxy server will stopped, all configuration files, firewalls, shedulers and so 
 - `-i` or `--interface` - ethernet interface name, to which IPv6 subnet is allocated and where all proxies will be raised. Automatically parsed from system info by default, use ONLY if you have non-standard/additional interfaces on your server.
 - `--uninstall` - uninstall proxy server, you don't need to provide any other parameters with it.
 - `--info` - get info about running proxy server (proxy count, rotating, auth, etc.)
+
+
+
+**Quick errors FAQ:**
+
+- If you got an error like `/etc/network/interfaces has no inet6 (IPv6) configuration` and you are ***really sure*** that you set up network configuration remotely or you're using Netplan, just add `-d` argument without value to script startup command.
+- If your proxies simply don't work, do these few steps and write an issue **only** if none of this worked:
+  - Run `./ipv6-proxy-server.sh --info`
+  - Check that backconnect addresses parsed correctly (the file name on your server in first step).
+  - Check that outgoing addresses generated correctly (the file name on your server in first step).
+  - Check connection from proxy server: select one of outgoing IPv6 addresses from previous step and run command `curl --interface <ipv6-address> <website>`. If it works correctly, but proxy doesn't work - write an issue right now.
+  - Check if the site you want to access has an AAAA record in DNS. If no, you cannot reach this site via any IPv6 proxies.
+  - Verify that your VPS provider allocated a full IPv6 subnet to the server (DigitalOcean and many other providers don't do this).
 
 ### License
 
