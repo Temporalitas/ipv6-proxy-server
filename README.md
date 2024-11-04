@@ -47,6 +47,7 @@ Proxy server will stopped, all configuration files, firewalls, shedulers and so 
 - `-t` or `--proxies-type` - Proxies type - `http` or `socks5`. Default `http`, if no value provided
 - `-u` or `--username` - All proxies auth login
 - `-p` or `--password` - All proxies auth password (if you specify neither username not password, proxy will run without authentication)
+- `--rotate-every-request` - bool parameter without value, if used, for every request to each proxy you will get different gateway IP from your IPv6 subnet. Doesn't work on all VPS. If configuration isn't possible, it will exit with an error
 - `--random` - bool parameter without value, if used, each backconnect proxy will have random username and password, that will be written in backconnect proxies file (`-f` argument)
 - `--start-port` - backconnect IPv4 start port. If you create 1500 proxies and `start-port` is `20000`, and server external IPv4 is, e.g,`180.113.14.28` you can connect to proxies using `180.113.14.28:20000`, `180.113.14.28:20001` and so on until `180.113.14.28:21500`
 - `-r` or `--rotating-interval` - rotation interval of entire proxy pool in minutes. At the end of each interval, output (external IPv6) addresses of all proxies are changed and proxy server is restarted, which breaks existing connections for a few seconds. From 0 to 59, default value - `0` (rotating disabled)
