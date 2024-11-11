@@ -17,9 +17,7 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                           [--start-port <5000-65536> start port for backconnect ipv4 (default 30000)]
                           [-l | --localhost <bool> allow connections only for localhost (backconnect on 127.0.0.1)]
                           [-f | --backconnect-proxies-file <string> path to file, in which backconnect proxies list will be written
-                                when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]    
-                          [-d | --disable-inet6-ifaces-check <bool> disable /etc/network/interfaces configuration check & exit when error
-                                use only if configuration handled by cloud-init or something like this (for example, on Vultr servers)]                                                      
+                                when proxies start working (default \`~/proxyserver/backconnect_proxies.list\`)]                                                     
                           [-m | --ipv6-mask <string> constant ipv6 address mask, to which the rotated part is added (or gateaway)
                                 use only if the gateway is different from the subnet address]
                           [-i | --interface <string> full name of ethernet interface, on which IPv6 subnet was allocated
@@ -33,7 +31,7 @@ function usage() { echo "Usage: $0 [-s | --subnet <16|32|48|64|80|96|112> proxy 
                           [--info <bool> print info about running proxy server]
                           " 1>&2; exit 1; }
 
-options=$(getopt -o ldhs:c:u:p:t:r:m:f:i:b: --long help,rotate-every-request,localhost,disable-inet6-ifaces-check,random,uninstall,info,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip:,allowed-hosts:,denied-hosts: -- "$@")
+options=$(getopt -o lhs:c:u:p:t:r:m:f:i:b: --long help,rotate-every-request,localhost,random,uninstall,info,subnet:,proxy-count:,username:,password:,proxies-type:,rotating-interval:,ipv6-mask:,interface:,start-port:,backconnect-proxies-file:,backconnect-ip:,allowed-hosts:,denied-hosts: -- "$@")
 
 # Throw error and chow help message if user don`t provide any arguments
 if [ $? != 0 ] ; then echo "Error: no arguments provided. Terminating..." >&2 ; usage ; fi;
@@ -52,7 +50,6 @@ uninstall=false
 try_rotate_every_request=false
 rotate_every_request=false
 print_info=false
-inet6_network_interfaces_configuration_check=true
 backconnect_proxies_file="default"
 # Global network inteface name
 interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'NR==1')"
@@ -74,7 +71,6 @@ while true; do
     -f | --backconnect_proxies_file ) backconnect_proxies_file="$2"; shift 2;;
     -i | --interface ) interface_name="$2"; shift 2;;
     -l | --localhost ) use_localhost=true; shift ;;
-    -d | --disable-inet6-ifaces-check ) inet6_network_interfaces_configuration_check=false; shift ;;
     --allowed-hosts ) allowed_hosts="$2"; shift 2;;
     --denied-hosts ) denied_hosts="$2"; shift 2;;
     --uninstall ) uninstall=true; shift ;;
@@ -313,14 +309,12 @@ function check_ipv6(){
   fi;
 
   local ifaces_config="/etc/network/interfaces";
-  if $inet6_network_interfaces_configuration_check; then
-    if [ ! -f $ifaces_config ]; then log_err_and_exit "Error: interfaces config ($ifaces_config) doesn't exist"; fi;
+  if [ ! -f $ifaces_config ]; then log_err "Potential error: interfaces config ($ifaces_config) doesn't exist"; fi;
     
-    if grep 'inet6' $ifaces_config > /dev/null; then
-      echo "Network interfaces for IPv6 configured correctly";
-    else
-      log_err_and_exit "Error: $ifaces_config has no inet6 (IPv6) configuration.";
-    fi;
+  if grep 'inet6' $ifaces_config > /dev/null; then
+    echo "Network interfaces for IPv6 configured correctly";
+  else
+    log_err "Potential error: $ifaces_config has no inet6 (IPv6) configuration.";
   fi;
 
   if [[ $(ping6 -c 1 google.com) != *"Network is unreachable"* ]] &> /dev/null; then 

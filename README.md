@@ -54,8 +54,6 @@ Proxy server will stopped, all configuration files, firewalls, shedulers and so 
 - `--allowed-hosts` - list of allowed hosts, to which user can connect via proxy (comma-separated, without spaces, for example - `"google.com,*.google.com,fb.com"`). All other hosts will be denied, if this parameter is provided
 - `--denied-hosts` - list of denied hosts (comma-separated, without spaces, for example - `"google.com,*.google.com,fb.com"`). All others hosts will be allowed, if this parameter is provided
 - `-l` or `--localhost` - bool parameter without value, if used, all backconnect proxy will be available only on localhost (`127.0.0.1:30000` instead of `180.113.14.28:30000`)
-- `-d` or `--disable-inet6-ifaces-check` - disable /etc/network/interfaces configuration check & exit when error.
-  Use only if configuration handled by cloud-init or something like this (for example, on Vultr servers), rarely used parameter, check your VPS documentation
 - `-b` or `--backconnect-ip` - server IPv4 backconnect address for proxies, use ONLY if script cannot parse IP correctly and your server has non-standard IP configuration
 - `-f` or `--backconnect-proxies-file` - path to file, in which backconnect proxies list will be written when proxies start working (default `~/proxyserver/backconnect_proxies.list`). You can just copy all proxies from this file and use them in your soft as list of IPv6 proxies.
 - `-m` or `--ipv6-mask` - first blocks on server subnet, unchanged part, use ONLY if script cannot parse ipv6 mask automatically. For example, if the external ipv6 address on server is `2a03:6f01:5::1da6` and you want to use entire /64 subnet, script cannot parse ipv6 gateway because of address zero-field replacement with `::`. Real mask for /64 subnet is first four blocks - `2a03:6f01:5:0`
@@ -67,11 +65,11 @@ Proxy server will stopped, all configuration files, firewalls, shedulers and so 
 
 **Quick errors FAQ:**
 
-- If you got an error like `/etc/network/interfaces has no inet6 (IPv6) configuration` and you are ***really sure*** that you set up network configuration remotely or you're using Netplan, just add `-d` argument without value to script startup command.
 - If your proxies simply don't work, do these few steps and write an issue **only** if none of this worked:
-  - Run `./ipv6-proxy-server.sh --info`
+  - Check your logfile: `/var/tmp/ipv6-proxy-server-logs.log` for any error-like messages. If message is related to configuration/subnet allocation, ask your VPS provider. If error message is unclear, write an issue.
+  - If there is no errors, run `./ipv6-proxy-server.sh --info`.
   - Check that backconnect addresses parsed correctly (the file name on your server in first step).
-  - Check that outgoing addresses generated correctly (the file name on your server in first step).
+  - Check that outgoing IPv6 addresses generated correctly (in `proxyserver/3proxy/3proxy.cfg` file).
   - Check connection from proxy server: select one of outgoing IPv6 addresses from previous step and run command `curl --interface <ipv6-address> <website>`. If it works correctly, but proxy doesn't work - write an issue right now.
   - Check if the site you want to access has an AAAA record in DNS. If no, you cannot reach this site via any IPv6 proxies.
   - Verify that your VPS provider allocated a full IPv6 subnet to the server (DigitalOcean and many other providers don't do this).
