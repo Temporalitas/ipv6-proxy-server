@@ -56,6 +56,7 @@ interface_name="$(ip -br l | awk '$1 !~ "lo|vir|wl|@NONE" { print $1 }' | awk 'N
 # Log file for script execution
 script_log_file="/var/tmp/ipv6-proxy-server-logs.log"
 backconnect_ipv4=""
+subnet_mask=""
 
 while true; do
   case "$1" in
@@ -166,6 +167,8 @@ proxyserver_config_path="$proxy_dir/3proxy/3proxy.cfg"
 proxyserver_info_file="$proxy_dir/running_server.info"
 # Path to file with all result (external) ipv6 addresses
 random_ipv6_list_file="$proxy_dir/ipv6.list"
+# Path to file that used to check are proxy router via ndppd or not
+ndppd_routing_file="$proxy_dir/ndppd.routed"
 # Path to file with proxy random usernames/password
 random_users_list_file="$proxy_dir/random_users.list"
 # Define correct path to file with backconnect proxies list, if it isn't defined by user
@@ -233,7 +236,7 @@ function kill_3proxy(){
 }
 
 function remove_ipv6_addresses_from_iface(){
-  if test -f $random_ipv6_list_file; then
+  if grep -q "false" $ndppd_routing_file || ! test -s $ndppd_routing_file && test -s $random_ipv6_list_file; then
     # Remove old ips from interface
     for ipv6_address in $(cat $random_ipv6_list_file); do ip -6 addr del $ipv6_address dev $interface_name; done;
     rm $random_ipv6_list_file; 
@@ -475,12 +478,17 @@ function create_startup_script(){
   proxyserver_process_pids=(\`pgrep -f [3]proxy\`)
 
   # Save old IPv6 addresses in temporary file to delete from interface after rotating
-  old_ipv6_list_file="$random_ipv6_list_file.old"
+  old_ipv6_list_file="$random_ipv6_list_file.old";
   if test -f $random_ipv6_list_file; 
     then cp $random_ipv6_list_file \$old_ipv6_list_file; 
     rm $random_ipv6_list_file;
   fi;
-  if [ $can_route_via_ndppd -eq 0 ]; then echo "ndppd-routed" >> $random_ipv6_list_file; fi; 
+
+  old_ndppd_routing_file="$ndppd_routing_file.old";
+  if test -f $ndppd_routing_file;
+    then cp $ndppd_routing_file \$old_ndppd_routing_file;
+  fi;
+  if [ $can_route_via_ndppd -eq 0 ]; then echo "true" > $ndppd_routing_file; else echo "false" > $ndppd_routing_file; fi; 
 
   # Array with allowed symbols in hex (in ipv6 addresses)
   array=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
@@ -577,7 +585,7 @@ function create_startup_script(){
   done;
 
   # Remove old random ip list after running new 3proxy instance
-  if [ -f \$old_ipv6_list_file ] && ! grep -q "ndppd-routed" \$old_ipv6_list_file; then
+  if  grep -q "false" \$old_ndppd_routing_file || ! test -s \$old_ndppd_routing_file && [ -s \$old_ipv6_list_file ]; then
     for ipv6_address in \$(cat \$old_ipv6_list_file); do ip -6 addr del \$ipv6_address dev $interface_name; done;
     rm \$old_ipv6_list_file; 
   fi;
