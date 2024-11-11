@@ -283,7 +283,7 @@ function install_package(){
 }
 
 function get_backconnect_ipv4(){
-  if [ $use_localhost == true ]; then echo "127.0.0.1"; return; fi;
+  if $use_localhost; then echo "127.0.0.1"; return; fi;
   if [ ! -z "$backconnect_ipv4" -a "$backconnect_ipv4" != " " ]; then echo $backconnect_ipv4; return; fi;
 
   local maybe_ipv4=$(ip addr show $interface_name | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
@@ -313,7 +313,7 @@ function check_ipv6(){
   fi;
 
   local ifaces_config="/etc/network/interfaces";
-  if [ $inet6_network_interfaces_configuration_check = true ]; then
+  if $inet6_network_interfaces_configuration_check; then
     if [ ! -f $ifaces_config ]; then log_err_and_exit "Error: interfaces config ($ifaces_config) doesn't exist"; fi;
     
     if grep 'inet6' $ifaces_config > /dev/null; then
@@ -441,7 +441,7 @@ function remove_from_cron(){
 
 function generate_random_users_if_needed(){
   # No need to generate random usernames and passwords for proxies, if auth=none or one username/password for all proxies provided
-  if [ $use_random_auth != true ]; then return; fi;
+  if $use_random_auth; then return; fi;
   delete_file_if_exists $random_users_list_file;
   
   for i in $(seq 1 $proxy_count); do 
@@ -613,7 +613,7 @@ function open_ufw_backconnect_ports(){
   close_ufw_backconnect_ports;
 
   # No need open ports if backconnect proxies on localhost
-  if [ $use_localhost = true ]; then return; fi;
+  if $use_localhost; then return; fi;
 
   if ! is_package_installed "ufw"; then echo "Firewall not installed, ports for backconnect proxy opened successfully"; return; fi;
 
@@ -656,14 +656,14 @@ function write_backconnect_proxies_to_file(){
     return;
   fi;
 
-  if [ $use_random_auth = true ]; then 
+  if $use_random_auth; then 
     local proxy_random_credentials;
     local count=0;
     readarray -t proxy_random_credentials < $random_users_list_file;
   fi;
 
   for port in $(eval echo "{$start_port..$last_port}"); do
-    if [ $use_random_auth = true ]; then 
+    if $use_random_auth; then 
       proxy_credentials=":${proxy_random_credentials[$count]}";
       ((count+=1))
     fi;
@@ -696,7 +696,7 @@ Technical info:
 EOF
 }
 
-if [ $print_info = true ]; then
+if $print_info; then
   if ! is_proxyserver_installed; then log_err_and_exit "Proxy server isn't installed"; fi;
   if ! is_proxyserver_running; then log_err_and_exit "Proxy server isn't running. You can check log of previous run attempt in $script_log_file"; fi;
   if ! test -f $proxyserver_info_file; then log_err_and_exit "File with information about running proxy server not found"; fi;
@@ -705,7 +705,7 @@ if [ $print_info = true ]; then
   exit 0;
 fi;
 
-if [ $uninstall = true ]; then
+if $uninstall; then
   if ! is_proxyserver_installed; then log_err_and_exit "Proxy server is not installed"; fi;
   
   remove_from_cron;
