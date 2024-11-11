@@ -213,7 +213,7 @@ function is_ndppd_routing_working(){
   fi;
 
   # Use this ip (subnet mask then zeros then 5252) to test, can we access websites with it or not
-  random_ipv6_for_test=$(get_subnet_mask)::5252;
+  random_ipv6_for_test=$subnet_mask::5252;
 
   # Try many websites to verify that we can use this IP, because some sites can be down
   if curl -m 5 -s --interface $random_ipv6_for_test ipv6.ip.sb | grep -q $random_ipv6_for_test; then return 0; fi;
@@ -384,7 +384,7 @@ function configure_ipv6(){
 
 function configure_ndppd(){
   # Add neighbour route to redirect connections from any address from the subnet to interface and ndppd can handle them
-  ip route add local $(get_subnet_mask)::/$subnet dev $interface_name;
+  ip route add local $subnet_mask::/$subnet dev $interface_name;
 
   cat > /etc/ndppd.conf <<-EOF
   route-ttl 30000
@@ -394,7 +394,7 @@ function configure_ndppd(){
     timeout 500
     ttl 30000
 
-    rule $(get_subnet_mask)::/$subnet {
+    rule $subnet_mask::/$subnet {
         static
     }
   }
@@ -495,7 +495,7 @@ function create_startup_script(){
   function rh () { echo \${array[\$RANDOM%16]}; }
 
   rnd_subnet_ip () {
-    echo -n $(get_subnet_mask);
+    echo -n $subnet_mask;
     symbol=$subnet
     while (( \$symbol < 128)); do
       if ((\$symbol % 16 == 0)); then echo -n :; fi;
@@ -534,7 +534,7 @@ function create_startup_script(){
   if $rotate_every_request; then 
     access_rules_part="
       \${access_rules_part}
-      parent 1000 extip $(get_subnet_mask)::/$subnet 0"
+      parent 1000 extip $subnet_mask::/$subnet 0"
   fi;
     
 
@@ -678,7 +678,7 @@ function write_proxyserver_info(){
 User info:
   Proxy count: $proxy_count
   Proxy type: $proxies_type
-  Proxy IP: $(get_backconnect_ipv4)
+  Proxy IP: $backconnect_ipv4
   Proxy ports: between $start_port and $last_port
   Auth: $(if is_auth_used; then if [ $use_random_auth = true ]; then echo "random user/password for each proxy"; else echo "user - $user, password - $password"; fi; else echo "disabled"; fi;)
   Rules: $(if ([ -n "$denied_hosts" ] || [ -n "$allowed_hosts" ]); then if [ -n "$denied_hosts" ]; then echo "denied hosts - $denied_hosts, all others are allowed"; else echo "allowed hosts - $allowed_hosts, all others are denied"; fi; else echo "no rules specified, all hosts are allowed"; fi;)
@@ -722,6 +722,8 @@ fi;
 delete_file_if_exists $script_log_file;
 check_startup_parameters;
 check_ipv6;
+backconnect_ipv4=$(get_backconnect_ipv4);
+subnet_mask=$(get_subnet_mask)
 if is_proxyserver_installed; then
   echo -e "Proxy server already installed, reconfiguring:\n";
 else
@@ -730,7 +732,6 @@ else
   install_3proxy;
   configure_ndppd;
 fi;
-backconnect_ipv4=$(get_backconnect_ipv4);
 generate_random_users_if_needed;
 create_startup_script;
 add_to_cron;
